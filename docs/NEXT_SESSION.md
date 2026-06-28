@@ -1,5 +1,9 @@
 # Next session kickoff — Gates F / G / H
 
+> **Progress:** Gate F (richer delta) ✅ and Gate G (web-article plugin) ✅ shipped — 107 tests pass.
+> **Remaining: Gate H** (multi-media content, HANDOFF #5). The brief below is the original 3-gate
+> plan; start the next session on Gate H only.
+
 Paste the block below to start the next session. Goal: deliver three documented next-steps
 (HANDOFF #8 richer delta, #4 web-article plugin, #5 multi-media content), gated.
 

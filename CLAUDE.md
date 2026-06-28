@@ -26,7 +26,20 @@ that decoupling is the core idea.
 - Module 13 User Belief Graph ✅ (7 author beliefs in data/user_beliefs.json)
 - Module 14 Narrative Planner ✅ (gemma4 over belief state + user beliefs; voice in settings.author_voice)
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
-- **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 70 tests pass.
+- **MVP COMPLETE + Part B + Part B-2 + Gates F/G** — full `bgis run <ref>` end-to-end. 107 tests pass.
+
+## Gate G — web-article source plugin ✅ (107 tests)
+`WebArticleSourcePlugin` (`src/bgis/sources/web.py`): bare article URL → one `article` Document.
+- **ref scheme**: `url:<u>` explicit OR bare `http(s)://` (convenience). Registered LAST in
+  SOURCE_PLUGINS so `GitHubSourcePlugin` keeps github URLs; kind:-prefixed plugins are disjoint.
+- **extract**: `trafilatura.extract` for main content (nav/footer/boilerplate stripped); title via
+  `<title>` regex (avoids trafilatura metadata API drift). New dep `trafilatura>=1.8`.
+- **injectable `fetch`** (url→html); trafilatura runs offline → tests use canned HTML, no network.
+- SourceType += `web`; reuses DocType `article` (m04 already types article→opinion+finding). No repo
+  → m09 skipped; authority = Gate F `source_type_authority["web"]=0.5` (no stars).
+- Validated live: `bgis run "url:https://simonwillison.net/2024/Dec/31/llms-in-2024/"` → 185-word
+  post naming real specifics (Gemini 1.5 Pro 2M ctx, Llama 3.2 3B, M2 MacBook); graph 189→193, 5
+  beliefs reference the web source.
 
 ## Gate F — richer belief delta ✅ (103 tests)
 Completes the Part B-2 thesis: cross-source-TYPE agreement MOVES confidence. m11 evidence_strength's

@@ -8,15 +8,18 @@ from .gh_discussions import GHDiscussionsSourcePlugin
 from .github import GitHubSourcePlugin
 from .hn import HNSourcePlugin
 from .rss import RSSSourcePlugin
+from .web import WebArticleSourcePlugin
 
-# Order matters only when two plugins could match; today they are disjoint (each owns a
-# distinct URL shape or `kind:` prefix).
+# Order matters when two plugins could match. The kind:-prefixed plugins are disjoint; the only
+# overlap is URL-shaped refs: GitHubSourcePlugin claims github.com URLs and MUST precede the
+# web-article plugin, which catches any other bare http(s) URL (or an explicit `url:` ref).
 SOURCE_PLUGINS: list[SourcePlugin] = [
     GitHubSourcePlugin(),
     HNSourcePlugin(),
     ArxivSourcePlugin(),
     GHDiscussionsSourcePlugin(),
     RSSSourcePlugin(),
+    WebArticleSourcePlugin(),
 ]
 
 

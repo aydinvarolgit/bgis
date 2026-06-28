@@ -83,6 +83,7 @@ class Settings(BaseSettings):
             "github": 0.4,  # fallback only; repos normally use the stars formula
             "arxiv": 0.7,
             "rss": 0.5,
+            "web": 0.5,
             "hn": 0.4,
             "gh_discussions": 0.4,
         }

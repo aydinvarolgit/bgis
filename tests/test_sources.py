@@ -6,6 +6,7 @@ from bgis.sources.gh_discussions import GHDiscussionsSourcePlugin
 from bgis.sources.github import GitHubSourcePlugin
 from bgis.sources.hn import HNSourcePlugin
 from bgis.sources.rss import RSSSourcePlugin
+from bgis.sources.web import WebArticleSourcePlugin
 
 
 # --- registry / resolve ---------------------------------------------------- #
@@ -27,6 +28,14 @@ def test_resolve_arxiv_ghd_rss():
 def test_resolve_unknown_raises():
     with pytest.raises(ValueError):
         resolve("ftp://nope")
+
+
+def test_resolve_web_article():
+    # Explicit url: scheme and bare http(s) both go to the web plugin...
+    assert isinstance(resolve("url:https://example.com/post"), WebArticleSourcePlugin)
+    assert isinstance(resolve("https://example.com/post"), WebArticleSourcePlugin)
+    # ...but a github URL is still claimed by the GitHub plugin (registered earlier).
+    assert isinstance(resolve("https://github.com/owner/repo"), GitHubSourcePlugin)
 
 
 def test_github_does_not_match_kind_query():
@@ -229,3 +238,51 @@ def test_rss_all_uses_configured_feeds(ctx):
     result = plugin.ingest("rss:all", ctx)
     assert seen == ["feedA", "feedB"]
     assert len(result.parsed.documents) == 2  # one entry per feed
+
+
+# --- Web article ingest (canned HTML, no network) -------------------------- #
+
+_HTML = """<!DOCTYPE html><html><head><title>Why agents need memory</title></head>
+<body>
+  <nav>Home | About | Subscribe</nav>
+  <article>
+    <h1>Why agents need memory</h1>
+    <p>The real bottleneck for autonomous agents is durable state, not bigger models.</p>
+    <p>In production, teams that added a memory layer cut repeated tool calls by half.</p>
+  </article>
+  <footer>Copyright 2026</footer>
+</body></html>"""
+
+
+def test_web_ingest_extracts_main_content(ctx):
+    plugin = WebArticleSourcePlugin(fetch=lambda url: _HTML)
+    result = plugin.ingest("url:https://blog.example/agents-memory", ctx)
+
+    assert result.repo is None  # no Repository -> Module 9 skipped
+    assert result.signals.signals == []
+    assert result.source.type == "web"
+
+    docs = result.parsed.documents
+    assert len(docs) == 1
+    d = docs[0]
+    assert d.type == "article"
+    assert d.title == "Why agents need memory"
+    assert d.meta["url"] == "https://blog.example/agents-memory"
+    # Main content extracted; boilerplate (nav/footer) stripped by trafilatura.
+    assert "durable state, not bigger models" in d.text
+    assert "Subscribe" not in d.text
+    assert "Copyright" not in d.text
+
+
+def test_web_ingest_accepts_bare_url(ctx):
+    plugin = WebArticleSourcePlugin(fetch=lambda url: _HTML)
+    result = plugin.ingest("https://blog.example/agents-memory", ctx)
+    assert result.parsed.documents[0].meta["url"] == "https://blog.example/agents-memory"
+
+
+def test_web_source_id_stable_per_url(ctx):
+    p = WebArticleSourcePlugin(fetch=lambda url: _HTML)
+    # `url:` and bare form resolve to the same URL -> same source_id (beliefs evolve, not fork).
+    a = p.ingest("url:https://blog.example/x", ctx).source.source_id
+    b = p.ingest("https://blog.example/x", ctx).source.source_id
+    assert a == b

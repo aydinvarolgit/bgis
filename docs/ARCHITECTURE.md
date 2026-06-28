@@ -74,10 +74,12 @@ repo?}`. `resolve(ref)` returns the first matching plugin. `bgis run <ref>` and 
 | `ArxivSourcePlugin` | `arxiv:<query>` | arxiv | Atom API, stdlib `xml.etree`; paper→`paper` doc (title+abstract) |
 | `GHDiscussionsSourcePlugin` | `ghd:owner/repo` | gh_discussions | PyGithub issues + GraphQL discussions (fails-soft) |
 | `RSSSourcePlugin` | `rss:<url>` \| `rss:all` | rss | `feedparser`; entry→`article` doc; curated `settings.rss_feeds` |
+| `WebArticleSourcePlugin` | `url:<u>` \| bare `http(s)://` | web | `trafilatura` main-content extract; page→`article` doc; **registered last** so GitHub keeps its URLs |
 
 `repo` is set **only** by GitHub because Module 9's sibling-repo retrieval is GitHub-native; the
 pipeline runs m09 only when `repo is not None` (other sources skip it). All HTTP getters are injectable
-(`fetch`/`gh`/`graphql`) so unit tests never touch the network. `DocType` += discussion/article/paper.
+(`fetch`/`gh`/`graphql`) so unit tests never touch the network. `DocType` += discussion/article/paper;
+`SourceType` += hn/arxiv/gh_discussions/rss/web.
 
 ---
 

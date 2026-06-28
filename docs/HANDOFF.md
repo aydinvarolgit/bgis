@@ -67,6 +67,7 @@ bgis run https://github.com/owner/repo          # full pipeline → data/posts/<
 bgis run "hn:agent memory"                       # non-GitHub source: hn:/arxiv:/ghd:/rss:
 bgis run "arxiv:retrieval augmented generation"  # findings | bgis run "ghd:owner/repo" (debate)
 bgis run "rss:all"                               # curated feeds (settings.rss_feeds)
+bgis run "url:https://blog.example/post"          # bare web article (trafilatura extract); bare http(s) also works
 bgis run <ref> --fresh                           # ignore cached claims/concepts, re-extract
 bgis run-module <name> --source-id <id>          # single module from persisted input
 bgis run-module discovery --url <url>            # discovery needs --url
@@ -132,7 +133,11 @@ Ordered by value:
 3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). Optional follow-on: search-plugin adapters
    (Tavily/Brave) behind a `SearchPlugin` interface; dependency-file candidates in m09.
 4. ~~Source plugins~~ ✅ done (Part B-2): HN/arXiv/GH-Discussions/RSS behind `SourcePlugin`.
-   Optional follow-on: web-article/PDF plugins; article fetch + `trafilatura` for truncated feeds.
+   ~~web-article plugin~~ ✅ **done (Gate G)**: `WebArticleSourcePlugin` — `url:<u>` or bare http(s)
+   URL → `trafilatura` main-content extract → one `article` doc (type `web`, authority baseline 0.5,
+   no repo → m09 skipped). Injectable `fetch`; registered last so GitHub keeps its URLs. Live:
+   `bgis run "url:https://simonwillison.net/2024/Dec/31/llms-in-2024/"` → post + 5 web beliefs.
+   Optional follow-on still open: PDF plugin.
 5. **More media** — blog/report/newsletter `ContentGenerator`s (m15 interface ready).
 6. **Storage migration** — `BeliefStore` → Neo4j, `VectorStore` → Qdrant, behind current interfaces.
 7. **Contradiction handling** — Module 11 currently records contradicting claim ids; make

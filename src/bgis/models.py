@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 # --------------------------------------------------------------------------- #
 
 # Widened as source plugins land. Each value is owned by one SourcePlugin (see bgis.sources).
-SourceType = Literal["github", "hn", "arxiv", "gh_discussions", "rss"]
+SourceType = Literal["github", "hn", "arxiv", "gh_discussions", "rss", "web"]
 
 
 class DiscoveryRequest(BaseModel):
