@@ -40,6 +40,10 @@ SYSTEM_TEMPLATE = (
     "sources, call that convergence out explicitly (it is the strongest evidence you have). "
     "BANNED: metaphors and cliches (e.g. 'nervous system', 'the brain', 'industrial wave', 'holy "
     "grail', 'game-changer', 'north star', 'the moat is'), and vague grandiosity with no specifics. "
+    "\n\nUSING THE THREE EVIDENCE KINDS: treat FACTS as grounding (what the projects are/do), "
+    "FINDINGS as hard evidence (measured/benchmarked results), and the STANCES/DEBATE block as the "
+    "opinions and tensions in the field — use them to TAKE A SIDE and argue a position, not just to "
+    "report. A sharp post grounds a contested stance in facts and findings. "
     "\n\nSet tone to match the author's voice and confidence in [0,1] reflecting how strongly the "
     "evidence supports the main message."
 )
@@ -71,6 +75,15 @@ def _belief_lines(update: BeliefGraphUpdate) -> str:
     return "\n".join(lines) if lines else "(no global beliefs yet)"
 
 
+def _stance_lines(update: BeliefGraphUpdate) -> str:
+    # Opinion stances accumulated on the touched beliefs — the field's judgments/predictions/debate.
+    lines = []
+    for b in update.beliefs:
+        for s in b.stances:
+            lines.append(f"- (on: {b.statement[:60]}) {s}")
+    return "\n".join(lines) if lines else "(no opinion stances on these beliefs yet)"
+
+
 def _user_lines(user: UserBeliefs) -> str:
     if not user.beliefs:
         return "(no author beliefs provided)"
@@ -82,6 +95,8 @@ def run(update: BeliefGraphUpdate, user: UserBeliefs, ctx: Context) -> Narrative
     user_prompt = (
         "GLOBAL BELIEFS (the system's current worldview, just updated by a new source):\n"
         f"{_belief_lines(update)}\n\n"
+        "STANCES / DEBATE (opinions accumulated on these beliefs — use to argue a position):\n"
+        f"{_stance_lines(update)}\n\n"
         "AUTHOR BELIEFS (the author's own stance):\n"
         f"{_user_lines(user)}\n\n"
         "Plan the LinkedIn post."

@@ -88,6 +88,32 @@ def test_created_beliefs_lead_and_are_labeled():
     assert "reinforced, 2 independent sources" in lines[1]
 
 
+def test_stances_reach_the_prompt(ctx):
+    upd = _update()
+    upd.beliefs[0].stances = ["coordination is overrated", "memory is the real bottleneck"]
+
+    captured = {}
+    orig = ctx.llm.structured
+
+    def capturing(system, user, schema, **kw):
+        captured["user"] = user
+        captured["system"] = system
+        return _NarrativeDraft(main_belief="X", confidence=0.5)
+
+    ctx.llm.structured = capturing
+    ctx.llm.structured_responses["_NarrativeDraft"] = _NarrativeDraft(main_belief="X", confidence=0.5)
+    m14_narrative.run(upd, _user(), ctx)
+    ctx.llm.structured = orig
+
+    assert "STANCES / DEBATE" in captured["user"]
+    assert "memory is the real bottleneck" in captured["user"]
+    assert "TAKE A SIDE" in captured["system"]
+
+
+def test_stance_lines_empty_when_no_stances():
+    assert "no opinion stances" in m14_narrative._stance_lines(_update())
+
+
 def test_handles_empty_worldview(ctx):
     ctx.llm.structured_responses["_NarrativeDraft"] = _NarrativeDraft(
         main_belief="From user beliefs only", confidence=0.5

@@ -59,6 +59,27 @@ def test_second_run_appends_history_and_updates(ctx):
     assert b.statement == "orchestration rising"  # original kept
 
 
+def _delta_with_stances(belief_id, old, new, stances):
+    return BeliefDeltas(
+        source_id="src_S",
+        deltas=[
+            BeliefDelta(
+                belief_id=belief_id, statement="s", linked_concepts=["concept_s"],
+                old_conf=old, evidence_strength=new, delta=round(new - old, 6),
+                new_conf=new, supporting=[], stance_points=stances, rationale=["r"],
+            )
+        ],
+    )
+
+
+def test_stances_accumulate_dedup_and_cap(ctx):
+    m12_belief_graph.run(_delta_with_stances("bel_s1", 0.0, 0.3, ["a", "b"]), ctx)
+    # Second source: one dup ("b"), three new -> total unique 6, capped to last 5.
+    m12_belief_graph.run(_delta_with_stances("bel_s1", 0.3, 0.3, ["b", "c", "d", "e", "f"]), ctx)
+    b = ctx.beliefs.get("bel_s1")
+    assert b.stances == ["b", "c", "d", "e", "f"]  # "a" evicted by cap, "b" not duplicated
+
+
 def test_declining_trend(ctx):
     m12_belief_graph.run(_deltas(0.0, 0.8), ctx)
     down = BeliefDeltas(

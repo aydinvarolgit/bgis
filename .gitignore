@@ -9,3 +9,6 @@ data/
 *.egg-info/
 build/
 dist/
+
+# Claude Code session runtime
+.claude/

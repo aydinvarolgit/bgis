@@ -62,3 +62,24 @@ def test_skips_blank_claims(ctx):
 def test_no_documents_returns_empty(ctx):
     out = m04_claims.run(ParsedDocuments(source_id="src_test", documents=[]), ctx)
     assert out.claims == []
+
+
+def test_claim_type_preserved(ctx):
+    ctx.llm.structured_responses["ClaimDraftList"] = ClaimDraftList(
+        claims=[
+            _ClaimDraft(text="It supports X", confidence=0.9, type="fact"),
+            _ClaimDraft(text="X is the future", confidence=0.6, type="opinion"),
+            _ClaimDraft(text="X is 2x faster in benchmarks", confidence=0.8, type="finding"),
+        ]
+    )
+    out = m04_claims.run(_parsed(), ctx)
+    assert [c.type for c in out.claims] == ["fact", "opinion", "finding"]
+
+
+def test_claim_type_defaults_to_fact(ctx):
+    # A draft without an explicit type (back-compat) lands as a fact.
+    ctx.llm.structured_responses["ClaimDraftList"] = ClaimDraftList(
+        claims=[_ClaimDraft(text="legacy claim", confidence=0.7)]
+    )
+    out = m04_claims.run(_parsed(), ctx)
+    assert out.claims[0].type == "fact"

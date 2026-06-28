@@ -28,6 +28,37 @@ that decoupling is the core idea.
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
 - **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 70 tests pass.
 
+## Part B-2 — opinionated multi-source ingestion ✅ (Gates A–E shipped; 94 tests)
+Goal: expert, stance-taking posts by ingesting OPINIONATED sources beyond GitHub. Plan:
+`docs/PLAN_PART_B2_SOURCES.md`. Decisions settled: A1=pure-opinion→low-conf 0.3+stances;
+finding_weight=1.0; wrap GitHub behind SourcePlugin; CLI `bgis run "kind:query"`; source_kind
+deferred (derive from data/raw/<sid>.json `type`).
+- **Gate A — claim typing**: `Claim.type` fact/opinion/finding (m04 classifies per doc [type]:
+  readme/etc→fact, discussion→opinion, article/paper→opinion+finding). m11: confidence built from
+  fact+finding only (`effective_conf=conf*type_weight`, fact 1.0/finding `finding_weight`/opinion 0);
+  opinions→`BeliefDelta.stance_points`→`Belief.stances` (m12 dedup+cap 5). Pure-opinion concept →
+  new belief at `pure_opinion_confidence`(0.3); on EXISTING belief opinions NEVER move confidence,
+  only append stances. m14 has STANCES/DEBATE block → argues a position.
+- **SourcePlugin interface** (`src/bgis/sources/`): `matches(ref)`+`ingest(ref,ctx)->IngestResult`
+  {source,parsed,signals,repo?}. `repo` set only by GitHub → m09 sibling-retrieval stays
+  GitHub-native; other sources skip it (pipeline guards `if repo is not None`). Registry+`resolve`.
+  GitHub path wrapped behind `GitHubSourcePlugin` (m01/02/03/05). `bgis run` ref = URL or `kind:query`.
+- **Gate B HN** (`hn:<q>`): Algolia API, no auth/deps, injectable fetch. story→`article` doc,
+  comments→`discussion`. caps 5 stories/15 comments.
+- **Gate C arXiv** (`arxiv:<q>`): Atom API, stdlib xml.etree (no dep). paper→`paper` doc (title+abstract).
+- **Gate D GH Discussions/Issues** (`ghd:owner/repo`): PyGithub issues (busiest first, PRs excluded) +
+  GraphQL discussions (optional, fails-soft). injectable gh+graphql. caps 20 issues/8 comments.
+- **Gate E RSS** (`rss:<feed-url>` or `rss:all`): feedparser dep, injectable fetch. entry→`article` doc.
+  curated feeds in `settings.rss_feeds`.
+- **DocType** widened: +discussion/article/paper. **SourceType** widened: +hn/arxiv/gh_discussions/rss.
+- Validated live: graph 164→185 beliefs; 11 span ≥2 source TYPES, one spans 3 (arxiv+github+hn on
+  agent memory), 8 beliefs carry stances (was 0). HN/arXiv/ghd/RSS posts take a stance w/ counterargument.
+- **Corroboration ratchet (m11)** ✅: SUPPORTING evidence never lowers an existing belief — a weaker
+  but agreeing low-authority source (no stars→authority 0.25) HOLDS confidence instead of dragging it
+  down; only CONTRADICTION (negative-polarity claims) can move it below the prior. Fixed the earlier
+  bug where adding an HN/arXiv corroboration dropped a repo belief (bel_05e54570 0.87→0.76→0.68).
+  Already-persisted lowered confidences from before the fix need a graph rebuild to correct.
+
 ## Part B — within-run multi-source convergence ✅ (Modules 8/9/11 real)
 The gap→retrieval→corroboration chain so a single run can pull in related external evidence:
 - **m08 gap**: gemma4 (temp=0) over each claim-backed concept + related beliefs -> `Gap{concept_id,

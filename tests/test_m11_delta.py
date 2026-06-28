@@ -123,3 +123,99 @@ def test_contradiction_recorded(ctx):
     assert d.supporting == ["c1"]
     assert d.contradicting == ["c2"]
     assert any("contradicting" in r for r in d.rationale)
+
+
+# --- Gate A: claim typing -------------------------------------------------- #
+
+def _typed_packet(claims):
+    pkt = EvidencePacket(
+        concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+        signals=[Signal(name="stars", value=1200, unit="count", source_field="stars")],
+    )
+    return EvidencePackets(source_id="src_test", packets=[pkt])
+
+
+def test_opinions_excluded_from_confidence_and_collected_as_stances(ctx):
+    # One fact (0.9) + one opinion (0.2). Confidence must come from the fact ONLY; the opinion
+    # is collected as a stance, not averaged in (which would have dragged mean to 0.55).
+    claims = [
+        Claim(id="c1", text="orchestrates agents", confidence=0.9, type="fact"),
+        Claim(id="c2", text="this approach will win", confidence=0.2, type="opinion"),
+    ]
+    out = m11_delta.run(_typed_packet(claims), RelatedBeliefs(source_id="src_test"), ctx)
+    d = out.deltas[0]
+    strength, _ = _expected_strength(mean=0.9)
+    assert d.evidence_strength == pytest.approx(strength, abs=1e-5)
+    assert d.stance_points == ["this approach will win"]
+    assert d.supporting == ["c1"]  # opinion not counted as support
+    assert d.statement == "orchestrates agents"  # fact preferred over opinion as statement
+
+
+def test_finding_weight_applied(ctx):
+    ctx.settings.finding_weight = 0.5
+    claims = [Claim(id="c1", text="2x faster", confidence=0.8, type="finding")]
+    out = m11_delta.run(_typed_packet(claims), RelatedBeliefs(source_id="src_test"), ctx)
+    # effective mean = 0.8 * 0.5 = 0.4
+    strength, _ = _expected_strength(mean=0.4)
+    assert out.deltas[0].evidence_strength == pytest.approx(strength, abs=1e-5)
+
+
+def test_pure_opinion_cold_start_uses_floor(ctx):
+    claims = [Claim(id="c1", text="agents are overhyped", confidence=0.9, type="opinion")]
+    out = m11_delta.run(_typed_packet(claims), RelatedBeliefs(source_id="src_test"), ctx)
+    d = out.deltas[0]
+    assert d.new_conf == pytest.approx(ctx.settings.pure_opinion_confidence, abs=1e-9)  # 0.3
+    assert d.stance_points == ["agents are overhyped"]
+    assert d.statement == "agents are overhyped"
+
+
+def test_supporting_low_authority_source_does_not_lower_belief(ctx):
+    # Established belief at 0.87; a low-authority supporting source (no stars -> authority 0.25)
+    # yields a weak evidence_strength. It must HOLD the belief, not drag it down.
+    prior = Belief(id="bel_ab12cd34", statement="established", confidence=0.87,
+                   linked_concepts=["concept_ab12cd34"])
+    related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
+    claims = [Claim(id="c1", text="agrees", confidence=0.8, type="finding")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+                         signals=[])  # no stars -> low authority
+    out = m11_delta.run(EvidencePackets(source_id="src_test", packets=[pkt]), related, ctx)
+    d = out.deltas[0]
+    assert d.new_conf == 0.87  # held, not lowered
+    assert d.delta == 0.0
+    assert any("ratchet" in r for r in d.rationale)
+
+
+def test_stronger_supporting_source_still_raises(ctx):
+    # Ratchet must not block legitimate upward moves.
+    prior = Belief(id="bel_ab12cd34", statement="s", confidence=0.5,
+                   linked_concepts=["concept_ab12cd34"])
+    related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
+    out = m11_delta.run(_packets(stars=1200), related, ctx)  # strength ~0.68 > 0.5
+    d = out.deltas[0]
+    assert d.new_conf > 0.5
+
+
+def test_contradiction_can_still_lower_belief(ctx):
+    # A contradicting (negative-polarity) source IS allowed to move confidence down.
+    prior = Belief(id="bel_ab12cd34", statement="s", confidence=0.9,
+                   linked_concepts=["concept_ab12cd34"])
+    related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
+    claims = [Claim(id="c1", text="fails", confidence=0.3, type="fact", polarity="negative")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+                         signals=[Signal(name="stars", value=10, source_field="stars")])
+    out = m11_delta.run(EvidencePackets(source_id="src_test", packets=[pkt]), related, ctx)
+    d = out.deltas[0]
+    assert d.new_conf < 0.9  # contradiction lowers
+    assert d.contradicting == ["c1"]
+
+
+def test_pure_opinion_does_not_move_existing_belief(ctx):
+    prior = Belief(id="bel_ab12cd34", statement="established fact", confidence=0.88,
+                   linked_concepts=["concept_ab12cd34"])
+    related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
+    claims = [Claim(id="c1", text="but is it sustainable?", confidence=0.9, type="opinion")]
+    out = m11_delta.run(_typed_packet(claims), related, ctx)
+    d = out.deltas[0]
+    assert d.new_conf == 0.88  # unchanged — opinions never move confidence
+    assert d.delta == 0.0
+    assert d.stance_points == ["but is it sustainable?"]

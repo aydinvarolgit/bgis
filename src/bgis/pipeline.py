@@ -46,6 +46,7 @@ from .modules import (
     m15_content,
 )
 from .persistence import artifact_exists, load_artifact, save_artifact
+from .sources import resolve
 
 # Ordered stages built so far. Extended as modules land.
 STAGE_ORDER = [
@@ -156,22 +157,26 @@ def run_belief_update(deltas: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
     return update
 
 
-def run(url: str, ctx: Context | None = None) -> GeneratedContent:
-    """Full BGIS pipeline: GitHub repo URL -> LinkedIn post (Modules 1-15).
+def run(ref: str, ctx: Context | None = None) -> GeneratedContent:
+    """Full BGIS pipeline: a source reference -> LinkedIn post (Modules 1-15).
 
-    Returns the GeneratedContent; the post markdown is also written to
+    `ref` is a GitHub repo URL or a `kind:query` string (e.g. `hn:agent memory`). The
+    matching SourcePlugin handles ingestion into ParsedDocuments (+ signals, + repo for
+    GitHub); everything after is source-agnostic. The post markdown is also written to
     data/posts/<source_id>.md.
     """
     ctx = ctx or Context()
-    src = run_discovery(url, ctx)
-    repo = run_ingest(src, ctx)
-    parsed = run_parse(repo, ctx)
+    ingest = resolve(ref).ingest(ref, ctx)
+    parsed, signals, repo = ingest.parsed, ingest.signals, ingest.repo
     claims = run_claims(parsed, ctx)
-    signals = run_signals(repo, ctx)
     concepts = run_concepts(claims, ctx)
     related = run_belief_retrieval(concepts, ctx)
     gaps = run_gap(concepts, related, ctx)
-    retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
+    # Module 9 retrieval is GitHub-native (sibling repos); only run it when we have a repo.
+    if repo is not None:
+        retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
+    else:
+        retrieved = RetrievedEvidence(source_id=parsed.source_id, items=[])
     packets = run_evidence(concepts, claims, signals, related, retrieved, ctx)
     deltas = run_delta(packets, related, ctx)
     update = run_belief_update(deltas, ctx)

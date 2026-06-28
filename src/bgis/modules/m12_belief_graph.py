@@ -24,6 +24,16 @@ from ..models import (
 )
 
 TREND_EPS = 0.01
+MAX_STANCES = 5  # keep only the most recent N opinion stances per belief
+
+
+def _merge_stances(existing: list[str], new: list[str]) -> list[str]:
+    """Append new stances, drop duplicates (preserve order), keep the last MAX_STANCES."""
+    merged = list(existing)
+    for s in new:
+        if s not in merged:
+            merged.append(s)
+    return merged[-MAX_STANCES:]
 
 
 def _trend(delta: float, is_new: bool) -> str:
@@ -61,6 +71,7 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
                 confidence=d.new_conf,
                 trend=_trend(d.delta, is_new=True),
                 linked_concepts=list(d.linked_concepts),
+                stances=_merge_stances([], d.stance_points),
                 history=[entry],
             )
             created.append(d.belief_id)
@@ -70,6 +81,7 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
             for cid in d.linked_concepts:
                 if cid not in existing.linked_concepts:
                     existing.linked_concepts.append(cid)
+            existing.stances = _merge_stances(existing.stances, d.stance_points)
             existing.history.append(entry)
             belief = existing
             updated.append(d.belief_id)

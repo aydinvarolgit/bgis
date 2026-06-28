@@ -18,14 +18,16 @@ app = typer.Typer(add_completion=False, help="Belief Graph Intelligence System")
 
 @app.command()
 def run(
-    url: str = typer.Argument(..., help="GitHub repository URL"),
+    ref: str = typer.Argument(
+        ..., help="GitHub repo URL or 'kind:query' (e.g. 'hn:agent memory')"
+    ),
     fresh: bool = typer.Option(False, "--fresh", help="Ignore cached claims/concepts; re-extract"),
 ):
-    """Run the full pipeline: repo URL -> LinkedIn post."""
+    """Run the full pipeline: a source reference -> LinkedIn post."""
     ctx = Context()
     if fresh:
         ctx.settings.use_cache = False
-    content = pipeline.run(url, ctx)
+    content = pipeline.run(ref, ctx)
     post_path = ctx.settings.stage_dir("posts") / f"{content.source_id}.md"
     rprint(f"[green]Post generated[/green] ({content.word_count} words) -> {post_path}")
     rprint("\n" + content.markdown)

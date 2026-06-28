@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 # Module 1 — Discovery
 # --------------------------------------------------------------------------- #
 
-SourceType = Literal["github"]  # widen as source plugins land (web, pdf, arxiv, ...)
+# Widened as source plugins land. Each value is owned by one SourcePlugin (see bgis.sources).
+SourceType = Literal["github", "hn", "arxiv", "gh_discussions", "rss"]
 
 
 class DiscoveryRequest(BaseModel):
@@ -89,7 +90,11 @@ class Repository(BaseModel):
 # Module 3 — Repository Parsing
 # --------------------------------------------------------------------------- #
 
-DocType = Literal["readme", "architecture", "dependencies", "metadata"]
+# Repo docs: readme/architecture/dependencies/metadata. Non-repo sources add their own:
+# discussion (HN/GH threads), article (blogs/RSS), paper (arXiv).
+DocType = Literal[
+    "readme", "architecture", "dependencies", "metadata", "discussion", "article", "paper"
+]
 
 
 class Document(BaseModel):
@@ -109,12 +114,19 @@ class ParsedDocuments(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
+# A claim's epistemic kind. fact = verifiable capability/spec; finding = empirical/benchmarked
+# result; opinion = a judgment/stance/prediction. Drives m11: facts+findings build confidence,
+# opinions are excluded from it and collected as belief stances instead.
+ClaimType = Literal["fact", "opinion", "finding"]
+
+
 class Claim(BaseModel):
     id: str
     text: str
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)  # doc refs, e.g. "readme:para4"
     polarity: Literal["positive", "negative", "neutral"] = "positive"
+    type: ClaimType = "fact"  # back-compat default: existing repo claims are facts
 
 
 class Claims(BaseModel):
@@ -128,6 +140,7 @@ class _ClaimDraft(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
     polarity: Literal["positive", "negative", "neutral"] = "positive"
+    type: ClaimType = "fact"
 
 
 class ClaimDraftList(BaseModel):
@@ -203,6 +216,7 @@ class Belief(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     trend: Trend = "new"
     linked_concepts: list[str] = Field(default_factory=list)
+    stances: list[str] = Field(default_factory=list)  # accumulated opinion texts (capped) for m14
     history: list[BeliefHistoryEntry] = Field(default_factory=list)
 
 
@@ -291,6 +305,7 @@ class BeliefDelta(BaseModel):
     new_conf: float
     supporting: list[str] = Field(default_factory=list)
     contradicting: list[str] = Field(default_factory=list)
+    stance_points: list[str] = Field(default_factory=list)  # opinion claim texts arguing the belief
     rationale: list[str] = Field(default_factory=list)
 
 

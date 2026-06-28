@@ -9,10 +9,22 @@ Out: BeliefDeltas{ deltas: [BeliefDelta, ...] }
 
 Deterministic, fully explainable. No store writes here (Module 12 persists). Formula:
   authority        = clamp( log10(stars + 10) / 4 , 0..1 )
-  evidence_strength= mean(claim.confidence) * (0.5 + 0.5 * authority)
+  effective_conf   = claim.confidence * type_weight[claim.type]   (opinion weight 0 -> excluded)
+  evidence_strength= mean(effective_conf over fact+finding) * (0.5 + 0.5 * authority) * ceiling
   cold start       : new = evidence_strength,            old = 0
   existing belief  : new = old + LR * (evidence_strength - old)
   delta            = new - old   (all clamped to [0, 1])
+
+Corroboration ratchet: for an existing belief, SUPPORTING evidence never lowers confidence —
+if a weaker but still-agreeing source (e.g. low-authority discourse with no stars) yields an
+evidence_strength below the prior, the belief HOLDS rather than regressing. Only CONTRADICTION
+(negative-polarity claims) can move confidence down. This keeps cross-source agreement monotone:
+adding an arXiv paper or HN thread that corroborates a repo belief can only hold or raise it.
+
+Claim typing (Gate A): only FACT and FINDING claims build a belief's confidence; OPINION claims
+never move it. Opinions are collected as `stance_points` (their texts) so m14 can argue them. A
+concept backed ONLY by opinions still creates a belief — at a low floor (pure_opinion_confidence)
+on cold start, or with confidence untouched on an existing belief — carrying just its stances.
 """
 
 from __future__ import annotations
@@ -50,60 +62,104 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
     # Index existing beliefs by id so we can detect updates vs cold-start creations.
     existing = {b.id: b for b in related.beliefs}
 
+    type_weight = {"fact": 1.0, "finding": ctx.settings.finding_weight, "opinion": 0.0}
+
     deltas: list[BeliefDelta] = []
     for packet in inp.packets:
         if not packet.claims:
             continue
 
         belief_id = belief_id_for_concept(packet.concept_id)
-        mean_conf = sum(c.confidence for c in packet.claims) / len(packet.claims)
+        prior = existing.get(belief_id)
+        old_conf = prior.confidence if prior else 0.0
+
+        # Only facts + findings build confidence; opinions are excluded and kept as stances.
+        confidence_claims = [c for c in packet.claims if c.type != "opinion"]
+        stance_points = [c.text for c in packet.claims if c.type == "opinion"]
+        supporting = [c.id for c in confidence_claims if c.polarity != "negative"]
+        contradicting = [c.id for c in confidence_claims if c.polarity == "negative"]
         authority = _authority(packet)
-        # The source's own claims can only carry a belief up to base_confidence_ceiling; the
-        # remaining headroom is reserved for independent external corroboration. This stops the
-        # corroboration term from being absorbed by the clamp on already-strong beliefs.
         ceiling = ctx.settings.base_confidence_ceiling
-        base_strength = mean_conf * (0.5 + 0.5 * authority) * ceiling
         # External corroboration: independent repos backing this concept lift strength toward 1.0,
         # bounded so external evidence can't dominate the source's own claims.
         corroboration = min(
             ctx.settings.external_corroboration_cap,
             ctx.settings.external_corroboration_weight * len(packet.external),
         )
-        evidence_strength = _clamp(base_strength + corroboration)
 
-        prior = existing.get(belief_id)
-        old_conf = prior.confidence if prior else 0.0
-        if prior is None:
-            new_conf = evidence_strength
+        if confidence_claims:
+            # effective_conf weights each claim by its type; mean over fact+finding only.
+            effective = [c.confidence * type_weight[c.type] for c in confidence_claims]
+            mean_conf = sum(effective) / len(effective)
+            # The source's own claims can only carry a belief up to base_confidence_ceiling; the
+            # remaining headroom is reserved for independent external corroboration. This stops the
+            # corroboration term from being absorbed by the clamp on already-strong beliefs.
+            base_strength = mean_conf * (0.5 + 0.5 * authority) * ceiling
+            evidence_strength = _clamp(base_strength + corroboration)
+            if prior is None:
+                new_conf = evidence_strength
+                update_note = f"cold start: new = evidence_strength = {_clamp(new_conf):.3f}"
+            else:
+                # Ratchet: SUPPORTING evidence never lowers an established belief — a weaker but
+                # still-agreeing source (e.g. low-authority discourse with no stars) holds the line
+                # rather than dragging it down. Only CONTRADICTION (negative-polarity claims) can
+                # move confidence below the prior. This keeps cross-source corroboration monotone.
+                step = LEARNING_RATE * (evidence_strength - old_conf)
+                if contradicting or step >= 0:
+                    new_conf = old_conf + step
+                    update_note = (
+                        f"update: new = {old_conf:.3f} + {LEARNING_RATE}*"
+                        f"({evidence_strength:.3f} - {old_conf:.3f}) = {_clamp(new_conf):.3f}"
+                    )
+                else:
+                    new_conf = old_conf  # supporting-only & weaker -> hold (no regression)
+                    update_note = (
+                        f"ratchet: supporting evidence_strength {evidence_strength:.3f} < prior "
+                        f"{old_conf:.3f} and no contradiction -> held at {old_conf:.3f}"
+                    )
+            rationale = [
+                f"{len(confidence_claims)} fact/finding claim(s), mean effective confidence "
+                f"{mean_conf:.3f}",
+                f"authority {authority:.3f} from source signals (stars)",
+                f"base = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) * ceiling {ceiling:.2f} "
+                f"= {base_strength:.3f}",
+                f"+ corroboration {corroboration:.3f} ({len(packet.external)} external) "
+                f"-> evidence_strength = {evidence_strength:.3f}",
+                update_note,
+            ]
         else:
-            new_conf = old_conf + LEARNING_RATE * (evidence_strength - old_conf)
+            # Pure-opinion concept: opinions never move confidence. New belief -> low floor;
+            # existing belief -> confidence untouched. Either way it carries its stances.
+            if not stance_points:
+                continue
+            if prior is None:
+                evidence_strength = ctx.settings.pure_opinion_confidence
+                new_conf = evidence_strength
+                rationale = [
+                    "opinion-only concept (no fact/finding claims)",
+                    f"cold start: new = pure_opinion_confidence floor = {new_conf:.3f}",
+                ]
+            else:
+                evidence_strength = old_conf
+                new_conf = old_conf
+                rationale = [
+                    "opinion-only concept (no fact/finding claims)",
+                    f"existing belief: confidence unchanged at {old_conf:.3f}; stances appended",
+                ]
+
         new_conf = _clamp(new_conf)
         delta = round(new_conf - old_conf, 6)
 
-        supporting = [c.id for c in packet.claims if c.polarity != "negative"]
-        contradicting = [c.id for c in packet.claims if c.polarity == "negative"]
-
-        rationale = [
-            f"{len(packet.claims)} claim(s), mean confidence {mean_conf:.3f}",
-            f"authority {authority:.3f} from source signals (stars)",
-            f"base = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) * ceiling {ceiling:.2f} "
-            f"= {base_strength:.3f}",
-            f"+ corroboration {corroboration:.3f} ({len(packet.external)} external) "
-            f"-> evidence_strength = {evidence_strength:.3f}",
-            (
-                f"cold start: new = evidence_strength = {new_conf:.3f}"
-                if prior is None
-                else f"update: new = {old_conf:.3f} + {LEARNING_RATE}*"
-                f"({evidence_strength:.3f} - {old_conf:.3f}) = {new_conf:.3f}"
-            ),
-        ]
         if contradicting:
             rationale.append(f"{len(contradicting)} contradicting claim(s) recorded")
+        if stance_points:
+            rationale.append(f"{len(stance_points)} opinion stance(s) collected")
 
+        # Prefer a fact/finding claim as the belief statement; fall back to opinions if that's all.
         statement = (
             prior.statement
             if prior
-            else _statement_from_packet(packet)
+            else _statement_from_claims(confidence_claims or packet.claims)
         )
 
         deltas.append(
@@ -117,6 +173,7 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
                 new_conf=round(new_conf, 6),
                 supporting=supporting,
                 contradicting=contradicting,
+                stance_points=stance_points,
                 rationale=rationale,
             )
         )
@@ -124,7 +181,7 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
     return BeliefDeltas(source_id=inp.source_id, deltas=deltas)
 
 
-def _statement_from_packet(packet: EvidencePacket) -> str:
-    """Representative belief statement: the highest-confidence claim for the concept."""
-    best = max(packet.claims, key=lambda c: c.confidence)
+def _statement_from_claims(claims) -> str:
+    """Representative belief statement: the highest-confidence claim among the candidates."""
+    best = max(claims, key=lambda c: c.confidence)
     return best.text

@@ -66,6 +66,22 @@ class Settings(BaseSettings):
     external_corroboration_weight: float = 0.05
     external_corroboration_cap: float = 0.15
 
+    # Claim-type weighting (m11). Facts and findings build a belief's confidence; opinions are
+    # excluded (weight 0) and collected as stances instead. finding_weight 1.0 = papers count the
+    # same as repo facts; bump >1 to make empirical findings outweigh repo self-description.
+    finding_weight: float = 1.0
+    # A concept backed ONLY by opinion claims (no fact/finding) still creates a belief, at this
+    # low floor confidence, carrying its stances so pure-discourse sources inform posts. On an
+    # EXISTING belief, opinions never move confidence (up or down) — they only append stances.
+    pure_opinion_confidence: float = 0.3
+
+    # Curated expert feeds for `bgis run "rss:all"` (RSS/Atom). Override via BGIS_RSS_FEEDS.
+    rss_feeds: list[str] = Field(
+        default_factory=lambda: [
+            "https://simonwillison.net/atom/everything/",
+        ]
+    )
+
     # Author voice for narrative/content. "Disciplined visionary": big-picture framing, but every
     # abstraction must cash out in a concrete, specific example — no metaphors, no LinkedIn cliches.
     author_voice: str = (
