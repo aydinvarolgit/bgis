@@ -54,7 +54,7 @@ behind a `SourcePlugin` (§2.5); non-GitHub sources produce `ParsedDocuments` di
 | 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable math; confidence from fact+finding only, opinions→`stance_points`; corroboration ratchet (see §4) |
 | 12 | belief_update | D | `BeliefDeltas` → `BeliefGraphUpdate` | persists beliefs; appends temporal history; never overwrites |
 | 13 | user_beliefs | **S** | (file) → `UserBeliefs` | loads `data/user_beliefs.json` |
-| 14 | narrative | L | `BeliefGraphUpdate(beliefs)+UserBeliefs` → `NarrativePlan` | **plans from worldview, not source**; STANCES/DEBATE block argues a position |
+| 14 | narrative | L | `BeliefGraphUpdate+UserBeliefs+EvidencePackets` → `NarrativePlan` | **plans from worldview, not source**; THIS SOURCE block (this run's claims) leads, CORROBORATION block (deduped pre-existing beliefs) is secondary (Gate I); STANCES/DEBATE argues a position |
 | 15 | content | L | `NarrativePlan` → `GeneratedContent` | LinkedIn markdown → `data/posts/<id>.md` |
 
 All contracts live in `src/bgis/models.py` (single source of truth).

@@ -28,6 +28,19 @@ that decoupling is the core idea.
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
 - **MVP COMPLETE + Part B + Part B-2 + Gates F/G** — full `bgis run <ref>` end-to-end. 107 tests pass.
 
+## Gate I — source-centered narrative ✅ (107 tests)
+Fix for narrative drift: when a source's concepts dedup onto pre-existing higher-confidence beliefs,
+m14 used to center the post on those (stale) beliefs' statements, not the ingested source. Now m14
+takes the run's `EvidencePackets` and builds two prompt blocks:
+- **THIS SOURCE** (lead): this run's own fact/finding claim texts, routed to beliefs by
+  `belief_id_for_concept`; created beliefs first. main_belief MUST be grounded here.
+- **CORROBORATION** (secondary): pre-existing beliefs (not created this run) the source agreed with,
+  shown with independent-source counts — support only, never the subject. Confidence no longer
+  promotes a corroboration belief into the lead.
+- m14.run signature: `run(update, user, packets, ctx)`; pipeline + cli `run-module narrative` thread
+  packets (`load_evidence`). Validated live on the GLM-5.2 article: post now centers on GLM-5.2
+  (Pareto frontier, AA-Briefcase, AA-Omniscience), not the previously-dominant Ollama/Agent Framework.
+
 ## Gate G — web-article source plugin ✅ (107 tests)
 `WebArticleSourcePlugin` (`src/bgis/sources/web.py`): bare article URL → one `article` Document.
 - **ref scheme**: `url:<u>` explicit OR bare `http(s)://` (convenience). Registered LAST in

@@ -249,7 +249,8 @@ def run_module(
             raise typer.BadParameter("narrative needs --source-id (run belief_update first)")
         update = pipeline.load_update(ctx, source_id)
         user = pipeline.run_user_beliefs(ctx)
-        plan = pipeline.run_narrative(update, user, ctx)
+        packets = pipeline.load_evidence(ctx, source_id)
+        plan = pipeline.run_narrative(update, user, packets, ctx)
         rprint(
             {
                 "source_id": plan.source_id,

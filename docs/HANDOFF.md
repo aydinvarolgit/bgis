@@ -150,6 +150,12 @@ Ordered by value:
    per source_id derived from `data/raw/<sid>.json`. Composes with ceiling/ratchet/pure-opinion.
    **Graph rebuilt** via `bgis rebuild` (wipe + chronological evidence-packet replay, no re-ingest):
    bel_05e54570 0.64 declining → 0.92 stable; no `declining` beliefs remain.
+9. ~~**Source-centered narrative**~~ ✅ **done (Gate I)** — m14 drifted onto pre-existing
+   higher-confidence beliefs when a source's concepts deduped onto them (post stopped being about the
+   ingested source). m14 now consumes `EvidencePackets` and splits the prompt into a THIS SOURCE lead
+   block (this run's own claim texts, routed by `belief_id_for_concept`) and a secondary CORROBORATION
+   block (deduped pre-existing beliefs, support only). Validated on the GLM-5.2 article: post centers
+   on GLM-5.2, not the previously-dominant Ollama/Agent Framework.
 
 ---
 

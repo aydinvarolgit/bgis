@@ -181,7 +181,7 @@ def run(ref: str, ctx: Context | None = None) -> GeneratedContent:
     deltas = run_delta(packets, related, ctx)
     update = run_belief_update(deltas, ctx)
     user = run_user_beliefs(ctx)
-    narrative = run_narrative(update, user, ctx)
+    narrative = run_narrative(update, user, packets, ctx)
     content = run_content(narrative, ctx)
     return content
 
@@ -191,9 +191,9 @@ def run_user_beliefs(ctx: Context) -> UserBeliefs:
 
 
 def run_narrative(
-    update: BeliefGraphUpdate, user: UserBeliefs, ctx: Context
+    update: BeliefGraphUpdate, user: UserBeliefs, packets: EvidencePackets, ctx: Context
 ) -> NarrativePlan:
-    plan = m14_narrative.run(update, user, ctx)
+    plan = m14_narrative.run(update, user, packets, ctx)
     save_artifact(ctx.settings, "beliefs", f"{plan.source_id}_narrative", plan)
     return plan
 
