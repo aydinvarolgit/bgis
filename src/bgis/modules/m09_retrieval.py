@@ -1,32 +1,43 @@
-"""Module 9 — Retrieval Engine (GitHub-native).
+"""Module 9 — Retrieval Engine.
 
-Acquire external evidence for the gap questions without leaving GitHub: find OTHER repos
-related to this source (repos sharing its distinctive topics + repos linked from its README),
-fetch their metadata, and attach each as corroborating evidence to the source concept it best
-matches (by embedding similarity). This is what creates multi-source convergence within a
-single run: a sibling project becomes external support for a shared concept.
+Acquire EXTERNAL evidence for the gap questions and attach each piece to the source concept it
+corroborates. Two layers:
 
-In:  Gaps + Concepts + Claims + Repository
+  1. GitHub-native sibling search (always on, only when the source is a repo): find OTHER repos
+     related to this one — repos sharing its distinctive topics + repos linked from its README —
+     and route each to its best-matching concept by embedding similarity. This creates multi-source
+     convergence within a single run: a sibling project becomes external support for a concept.
+
+  2. Pluggable `RetrievalBackend`s (opt-in via `retrieval_use_*` settings; see bgis.retrieval):
+     reuse-the-SourcePlugins (gap-kind routed), local-corpus embed-search, and keyless external
+     APIs (Wikipedia/Semantic Scholar/Crossref). These work for ANY source type, so a web/arxiv/hn
+     run can finally pull corroboration instead of skipping retrieval. All default OFF.
+
+In:  Gaps + Concepts + Claims + (optional) Repository
 Out: RetrievedEvidence{ items: [ RetrievedItem{ concept_id, question, source_url, summary } ] }
 
-GitHub via PyGithub (token reused from settings). Embeddings: nomic. No web search, no new deps.
-`gh` is injectable for tests.
+Every candidate — GitHub sibling, plugin hit, corpus doc, or API result — is embedded and gated
+against a concept at `retrieval_match_threshold`, so the relevance bar is identical across layers.
+GitHub via PyGithub; embeddings via nomic; backends inject their own HTTP getters for offline tests.
 """
 
 from __future__ import annotations
 
-import math
 import re
+from typing import Optional
 
 from ..context import Context
-from ..models import Claims, Concepts, Gaps, Repository, RetrievedEvidence, RetrievedItem
+from ..models import (
+    Claims,
+    Concepts,
+    Gaps,
+    Repository,
+    RetrievedEvidence,
+    RetrievedItem,
+)
+from ..retrieval import RetrievalBackend, best_concept, concept_rep, cos, default_backends
 
-# A concept matches a candidate repo better when represented by its name + aliases + a few of
-# its claim texts (not just the bare name). Cap claims so the rep stays focused.
-MAX_CLAIMS_IN_REP = 3
-
-# Topics too generic to find *related* (vs merely same-ecosystem) repos. Mirrors the spirit of
-# m06's GENERIC_TOKENS but at the topic level.
+# Topics too generic to find *related* (vs merely same-ecosystem) repos.
 GENERIC_TOPICS = {
     "ai", "llm", "llms", "ml", "machine-learning", "deep-learning", "python", "javascript",
     "typescript", "rust", "go", "nlp", "genai", "gpt", "chatgpt", "openai", "api", "sdk",
@@ -39,44 +50,84 @@ _NON_REPO = {"sponsors", "marketplace", "features", "about", "topics", "search",
 
 
 def run(
-    gaps: Gaps, concepts: Concepts, claims: Claims, repo: Repository, ctx: Context, gh=None
+    gaps: Gaps,
+    concepts: Concepts,
+    claims: Claims,
+    repo: Optional[Repository],
+    ctx: Context,
+    gh=None,
+    backends: Optional[list[RetrievalBackend]] = None,
 ) -> RetrievedEvidence:
     if not concepts.concepts:
         return RetrievedEvidence(source_id=concepts.source_id, items=[])
 
-    gh = gh or _build_client(ctx)
-    self_fullname = f"{repo.owner}/{repo.name}".lower()
-
-    candidates = _candidate_repos(repo, gh, ctx, self_fullname)
-
     # Pre-embed a rich concept representation (name + aliases + claim texts) once for matching.
     claim_by_id = {c.id: c for c in claims.claims}
-    concept_vecs = [
-        (c, ctx.embedder.embed(_concept_rep(c, claim_by_id))) for c in concepts.concepts
-    ]
+    concept_vecs = [(c, ctx.embedder.embed(concept_rep(c, claim_by_id))) for c in concepts.concepts]
+    by_id = {c.id: v for c, v in concept_vecs}
     question_for = _first_question_by_concept(gaps)
+    threshold = ctx.settings.retrieval_match_threshold
 
     items: list[RetrievedItem] = []
-    seen: set[str] = set()
-    for full_name, description, topics, stars, url in candidates:
-        if full_name in seen:
-            continue
-        seen.add(full_name)
-        text = f"{full_name}. {description}. topics: {', '.join(topics)}"
-        cand_vec = ctx.embedder.embed(text)
-        concept, sim = _best_concept(cand_vec, concept_vecs)
-        if concept is None or sim < ctx.settings.retrieval_match_threshold:
-            continue
+    seen_urls: set[str] = set()
+    per_concept: dict[str, int] = {}
+
+    def _add(text, summary, url, hint, question_default):
+        """Embed -> route to a concept -> threshold-gate -> append (dedup + per-concept cap)."""
+        if url and url in seen_urls:
+            return
+        vec = ctx.embedder.embed(text)
+        if hint and hint in by_id:
+            concept_id, sim = hint, cos(vec, by_id[hint])
+        else:
+            concept, sim = best_concept(vec, concept_vecs)
+            concept_id = concept.id if concept else None
+        if concept_id is None or sim < threshold:
+            return
+        if per_concept.get(concept_id, 0) >= ctx.settings.retrieval_max_per_concept:
+            return
+        if url:
+            seen_urls.add(url)
+        per_concept[concept_id] = per_concept.get(concept_id, 0) + 1
         items.append(
             RetrievedItem(
-                concept_id=concept.id,
-                question=question_for.get(
-                    concept.id, f"Related project to '{concept.name}'?"
-                ),
+                concept_id=concept_id,
+                question=question_for.get(concept_id, question_default),
                 source_url=url,
-                summary=f"{full_name} ({stars}★): {description or 'no description'}",
+                summary=summary,
             )
         )
+
+    # 1) GitHub-native sibling search (only when the source is a repo).
+    if repo is not None:
+        gh = gh or _build_client(ctx)
+        self_fullname = f"{repo.owner}/{repo.name}".lower()
+        for full_name, description, topics, stars, url in _candidate_repos(
+            repo, gh, ctx, self_fullname
+        ):
+            text = f"{full_name}. {description}. topics: {', '.join(topics)}"
+            _add(
+                text,
+                f"{full_name} ({stars}★): {description or 'no description'}",
+                url,
+                hint=None,
+                question_default=f"Related project?",
+            )
+
+    # 2) Pluggable backends (opt-in; default_backends reads the retrieval_use_* settings).
+    for backend in (backends if backends is not None else default_backends(ctx)):
+        try:
+            cands = backend.candidates(gaps, concepts, claims, ctx)
+        except Exception:
+            continue  # a misbehaving backend never breaks the run
+        for cand in cands:
+            _add(
+                cand.text,
+                cand.summary,
+                cand.source_url,
+                hint=cand.concept_id,
+                question_default=cand.question or "Relevant external evidence?",
+            )
 
     return RetrievedEvidence(source_id=concepts.source_id, items=items)
 
@@ -129,39 +180,11 @@ def _readme_repo_links(readme: str) -> list[tuple[str, str]]:
     return links
 
 
-def _concept_rep(concept, claim_by_id) -> str:
-    """Richer match text: concept name + aliases + a few of its claim texts."""
-    parts = [concept.name, *concept.aliases]
-    for cid in concept.from_claims[:MAX_CLAIMS_IN_REP]:
-        c = claim_by_id.get(cid)
-        if c:
-            parts.append(c.text)
-    return ". ".join(parts)
-
-
 def _first_question_by_concept(gaps: Gaps) -> dict[str, str]:
     out: dict[str, str] = {}
     for g in gaps.gaps:
         out.setdefault(g.concept_id, g.question)
     return out
-
-
-def _best_concept(vec, concept_vecs):
-    best, best_sim = None, -1.0
-    for concept, cvec in concept_vecs:
-        s = _cos(vec, cvec)
-        if s > best_sim:
-            best, best_sim = concept, s
-    return best, best_sim
-
-
-def _cos(a, b) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    return dot / (na * nb) if na and nb else 0.0
 
 
 # --- PyGithub adapters (kept tiny so search/get_repo objects stay swappable in tests) ---

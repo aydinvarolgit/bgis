@@ -130,8 +130,20 @@ Ordered by value:
 
 1. ~~Fix m11 corroboration saturation~~ ✅ done (base_confidence_ceiling reserves headroom).
 2. ~~Module 8 (gap) real~~ ✅ done.
-3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). Optional follow-on: search-plugin adapters
-   (Tavily/Brave) behind a `SearchPlugin` interface; dependency-file candidates in m09.
+3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). **Pluggable backends added** ✅
+   (`src/bgis/retrieval/`, `RetrievalBackend` interface, 117 tests): GitHub-native sibling search
+   stays default-on/inline; three OPT-IN backends (all `retrieval_use_*` settings default False) now
+   let ANY source type pull corroboration, not just repos —
+   `SourcePluginBackend` (reuse arxiv/hn/github plugins, routed by gap KIND),
+   `LocalCorpusBackend` (embed-search past `data/parsed/*.json`, zero network),
+   `ExternalApiBackend` (keyless Wikipedia + Semantic Scholar + Crossref). Every candidate is
+   embedded + gated at `retrieval_match_threshold`, dedup by url, capped `retrieval_max_per_concept`.
+   Pipeline now always calls m09 (repo optional). Live: web article `src_df63a983` went 0 → 8
+   external items (1 corpus + 3 wikipedia + 4 crossref), correctly concept-routed.
+   **DEFERRED (user undecided 2026-06-28):** a general open-web `SearchBackend` — DuckDuckGo (keyless
+   `ddgs` lib) or self-hosted SearXNG meta-search — drops in as one more `RetrievalBackend`, same
+   `candidates()` contract. Not built; seam ready. Bing is NOT an option (MS retired the Bing Search
+   APIs ~Aug 2025). Also still open: dependency-file candidates in the GitHub path.
 4. ~~Source plugins~~ ✅ done (Part B-2): HN/arXiv/GH-Discussions/RSS behind `SourcePlugin`.
    ~~web-article plugin~~ ✅ **done (Gate G)**: `WebArticleSourcePlugin` — `url:<u>` or bare http(s)
    URL → `trafilatura` main-content extract → one `article` doc (type `web`, authority baseline 0.5,

@@ -58,6 +58,25 @@ class Settings(BaseSettings):
     retrieval_max_candidates: int = 6
     # Measured (richer name+claims concept rep): true siblings ~0.68-0.71, off-topic <=0.60.
     retrieval_match_threshold: float = 0.62
+
+    # Module 9 — pluggable retrieval BACKENDS beyond the GitHub-native sibling search. Each is a
+    # `RetrievalBackend` (see bgis.retrieval). All default OFF so the GitHub-native path stays the
+    # only default behavior (and non-repo sources keep skipping m09) until explicitly enabled.
+    # Turning one on lets a single run pull external corroboration for ANY source type (web, arxiv,
+    # hn, rss...), not just GitHub repos. Every backend's HTTP getter is injectable -> tests offline.
+    retrieval_use_source_plugins: bool = False  # reuse arxiv/hn/github plugins, routed by gap.kind
+    retrieval_use_local_corpus: bool = False  # embed-search previously-ingested parsed documents
+    retrieval_use_external_apis: bool = False  # Wikipedia + Semantic Scholar + Crossref (keyless)
+    # Per-backend fan-out caps (keep runs bounded + within free API rate limits).
+    retrieval_plugin_max_gaps: int = 4  # source-plugin backend: gaps queried per run
+    retrieval_plugin_per_gap: int = 2  # results kept per queried gap
+    retrieval_corpus_max_docs: int = 40  # local-corpus backend: max past docs scanned per run
+    retrieval_external_max_concepts: int = 4  # external-API backend: concepts queried per run
+    retrieval_external_per_api: int = 2  # results kept per API per concept
+    retrieval_max_per_concept: int = 4  # global: cap external items attached to one concept
+    # DEFERRED (user undecided, 2026-06-28): a general open-web SearchBackend (DuckDuckGo via the
+    # `ddgs` lib, or a self-hosted SearXNG meta-search) would slot in beside these as another
+    # RetrievalBackend. Not built yet — see bgis.retrieval.__doc__ and docs/HANDOFF.md.
     # Module 11: a belief from the source's own claims maxes at this ceiling; the remaining
     # headroom (1 - ceiling) is reserved for independent external corroboration. This keeps the
     # corroboration term from being absorbed by the [0,1] clamp on already-strong beliefs.

@@ -19,7 +19,8 @@ that decoupling is the core idea.
 - Module 6 Concept Extraction & Normalization ✅ (gemma4 + nomic + Chroma dedup)
 - Module 7 Global Belief Retrieval ✅ (+ shared file-backed BeliefStore)
 - Module 8 Context Gap Analysis ✅ (REAL — gemma4 emits concept-tagged Gap{concept_id,question,kind})
-- Module 9 Retrieval Engine ✅ (REAL — GitHub-native: sibling repos via topic search + README links)
+- Module 9 Retrieval Engine ✅ (REAL — GitHub-native sibling repos + opt-in `RetrievalBackend`s:
+  source-plugin-reuse / local-corpus / external-APIs (wiki+S2+crossref); any source type, default off)
 - Module 10 Evidence Packet Builder ✅ (real — routes external evidence to its concept by concept_id)
 - Module 11 Belief Delta Engine ✅ (deterministic, explainable; concept_id->bel_ mapping; bounded external corroboration)
 - Module 12 Global Belief Graph Update ✅ (persists evolving beliefs + temporal history)

@@ -125,7 +125,7 @@ def run_gap(concepts: Concepts, related: RelatedBeliefs, ctx: Context) -> Gaps:
 
 
 def run_retrieval(
-    gaps: Gaps, concepts: Concepts, claims: Claims, repo: Repository, ctx: Context
+    gaps: Gaps, concepts: Concepts, claims: Claims, repo: Repository | None, ctx: Context
 ) -> RetrievedEvidence:
     retrieved = m09_retrieval.run(gaps, concepts, claims, repo, ctx)
     save_artifact(ctx.settings, "beliefs", f"{retrieved.source_id}_retrieved", retrieved)
@@ -172,11 +172,10 @@ def run(ref: str, ctx: Context | None = None) -> GeneratedContent:
     concepts = run_concepts(claims, ctx)
     related = run_belief_retrieval(concepts, ctx)
     gaps = run_gap(concepts, related, ctx)
-    # Module 9 retrieval is GitHub-native (sibling repos); only run it when we have a repo.
-    if repo is not None:
-        retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
-    else:
-        retrieved = RetrievedEvidence(source_id=parsed.source_id, items=[])
+    # Module 9 retrieval: GitHub-native sibling search runs only with a repo; the opt-in pluggable
+    # backends (retrieval_use_* settings) run for any source type. With everything off and no repo
+    # this returns empty — same as before.
+    retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
     packets = run_evidence(concepts, claims, signals, related, retrieved, ctx)
     deltas = run_delta(packets, related, ctx)
     update = run_belief_update(deltas, ctx)
