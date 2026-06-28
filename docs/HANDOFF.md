@@ -53,6 +53,9 @@ bgis run https://github.com/owner/repo          # full pipeline → data/posts/<
 bgis run <url> --fresh                           # ignore cached claims/concepts, re-extract
 bgis run-module <name> --source-id <id>          # single module from persisted input
 bgis run-module discovery --url <url>            # discovery needs --url
+bgis graph                                       # read the belief graph (consensus/trends/momentum/pillars/fringe)
+bgis graph --view consensus --limit 20           # one lens
+bgis graph --belief bel_xxxxxxxx                 # evidence trail (provenance) for one belief
 pytest                                           # all tests (no network; conftest fakes)
 ```
 

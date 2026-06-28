@@ -272,6 +272,96 @@ def run_module(
 
 
 @app.command()
+def graph(
+    view: str = typer.Option(
+        "summary", help="summary | consensus | trends | momentum | pillars | fringe"
+    ),
+    belief: str = typer.Option(None, help="Show the evidence trail for one belief id (bel_...)"),
+    limit: int = typer.Option(12, help="Rows to show"),
+):
+    """Read the belief graph: what independent sources converge on, what's rising, and why."""
+    ctx = Context()
+    beliefs = ctx.beliefs.all()
+    if belief:
+        _graph_provenance(ctx, belief)
+        return
+    if not beliefs:
+        rprint("[yellow]empty belief graph[/yellow] — run `bgis run <url>` first")
+        return
+
+    if view in ("summary", "consensus"):
+        rprint(f"[bold]CONSENSUS[/bold] — beliefs the most independent sources agree on "
+               f"({len(beliefs)} beliefs total)")
+        for b in sorted(beliefs, key=lambda b: (_nsrc(b), b.confidence), reverse=True)[:limit]:
+            rprint(f"  [cyan]{_nsrc(b)}src[/cyan] c{b.confidence:.2f} ({b.trend}) "
+                   f"{b.id} {b.statement[:64]}")
+    if view in ("summary", "trends"):
+        counts: dict[str, int] = {}
+        for b in beliefs:
+            counts[b.trend] = counts.get(b.trend, 0) + 1
+        rprint(f"\n[bold]TRENDS[/bold] {counts}")
+    if view in ("summary", "momentum"):
+        rprint("\n[bold]MOMENTUM[/bold] — biggest recent confidence shifts")
+        for b in sorted(beliefs, key=_last_delta, reverse=True)[:limit]:
+            rprint(f"  [green]+{_last_delta(b):.2f}[/green] -> c{b.confidence:.2f} "
+                   f"{b.statement[:60]}")
+    if view in ("summary", "pillars"):
+        rprint("\n[bold]PILLARS[/bold] — concepts spanning the most sources (shared vocabulary)")
+        names = _concept_names(ctx)
+        spans: dict[str, set] = {}
+        for b in beliefs:
+            s = {h.source_id for h in b.history}
+            for cid in b.linked_concepts:
+                spans.setdefault(cid, set()).update(s)
+        ranked = sorted(((len(v), names.get(k, k)) for k, v in spans.items()), reverse=True)
+        for n, nm in [r for r in ranked if r[0] > 1][:limit]:
+            rprint(f"  [cyan]{n} sources[/cyan] | {nm}")
+    if view in ("summary", "fringe"):
+        rprint("\n[bold]FRINGE[/bold] — lowest-confidence, single-source (edges, not the center)")
+        for b in sorted(beliefs, key=lambda b: b.confidence)[:limit]:
+            rprint(f"  c{b.confidence:.2f} {_nsrc(b)}src {b.statement[:64]}")
+
+
+def _nsrc(b) -> int:
+    return len({h.source_id for h in b.history})
+
+
+def _last_delta(b) -> float:
+    return b.history[-1].delta if b.history else 0.0
+
+
+def _concept_names(ctx) -> dict[str, str]:
+    """concept_id -> name, read from persisted concept artifacts."""
+    import json
+
+    out: dict[str, str] = {}
+    for f in ctx.settings.stage_dir("concepts").glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+        except Exception:  # noqa: BLE001
+            continue
+        for c in d.get("concepts", []):
+            out[c["id"]] = c["name"]
+    return out
+
+
+def _graph_provenance(ctx, belief_id: str) -> None:
+    """Trace one belief: its evidence trail across sources."""
+    b = ctx.beliefs.get(belief_id)
+    if b is None:
+        rprint(f"[red]no such belief[/red]: {belief_id}")
+        return
+    rprint(f"[bold]{b.id}[/bold]  c{b.confidence:.2f}  trend={b.trend}  ({_nsrc(b)} sources)")
+    rprint(f"  {b.statement}")
+    rprint(f"  concepts: {', '.join(b.linked_concepts) or '(none)'}")
+    rprint("  evidence trail:")
+    for h in b.history:
+        ts = getattr(h.ts, "date", lambda: h.ts)()
+        rprint(f"    {ts} {h.source_id}: {h.conf_before:.2f} -> {h.conf_after:.2f} "
+               f"({h.delta:+.2f}); +{len(h.supporting)} support, -{len(h.contradicting)} contra")
+
+
+@app.command()
 def smoke():
     """Check external dependencies are reachable."""
     ctx = Context()

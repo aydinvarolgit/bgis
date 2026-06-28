@@ -23,6 +23,7 @@ cp .env.example .env          # add GITHUB_TOKEN
 ollama pull gemma4:latest && ollama pull nomic-embed-text
 bgis smoke                    # verify deps
 bgis run https://github.com/juliusbrussee/caveman
+bgis graph                    # read the belief graph: consensus, trends, momentum, pillars
 ```
 
 ## Docs
