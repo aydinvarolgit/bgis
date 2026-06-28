@@ -58,8 +58,12 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
         belief_id = belief_id_for_concept(packet.concept_id)
         mean_conf = sum(c.confidence for c in packet.claims) / len(packet.claims)
         authority = _authority(packet)
-        base_strength = mean_conf * (0.5 + 0.5 * authority)
-        # External corroboration: independent repos backing this concept nudge strength up,
+        # The source's own claims can only carry a belief up to base_confidence_ceiling; the
+        # remaining headroom is reserved for independent external corroboration. This stops the
+        # corroboration term from being absorbed by the clamp on already-strong beliefs.
+        ceiling = ctx.settings.base_confidence_ceiling
+        base_strength = mean_conf * (0.5 + 0.5 * authority) * ceiling
+        # External corroboration: independent repos backing this concept lift strength toward 1.0,
         # bounded so external evidence can't dominate the source's own claims.
         corroboration = min(
             ctx.settings.external_corroboration_cap,
@@ -82,7 +86,8 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
         rationale = [
             f"{len(packet.claims)} claim(s), mean confidence {mean_conf:.3f}",
             f"authority {authority:.3f} from source signals (stars)",
-            f"base = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) = {base_strength:.3f}",
+            f"base = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) * ceiling {ceiling:.2f} "
+            f"= {base_strength:.3f}",
             f"+ corroboration {corroboration:.3f} ({len(packet.external)} external) "
             f"-> evidence_strength = {evidence_strength:.3f}",
             (

@@ -58,7 +58,11 @@ class Settings(BaseSettings):
     retrieval_max_candidates: int = 6
     # Measured (richer name+claims concept rep): true siblings ~0.68-0.71, off-topic <=0.60.
     retrieval_match_threshold: float = 0.62
-    # Module 11: each external corroboration nudges evidence_strength up by this much, capped.
+    # Module 11: a belief from the source's own claims maxes at this ceiling; the remaining
+    # headroom (1 - ceiling) is reserved for independent external corroboration. This keeps the
+    # corroboration term from being absorbed by the [0,1] clamp on already-strong beliefs.
+    base_confidence_ceiling: float = 0.85
+    # Each external corroboration nudges evidence_strength up by this much, capped.
     external_corroboration_weight: float = 0.05
     external_corroboration_cap: float = 0.15
 

@@ -80,15 +80,16 @@ on re-run ⇒ belief ids fixed ⇒ deterministic evolution. `bgis run --fresh` b
 
 ```
 authority         = clamp( log10(stars + 10) / 4 , 0..1 )
-base              = mean(claim.confidence) * (0.5 + 0.5 * authority)
+base              = mean(claim.confidence) * (0.5 + 0.5 * authority) * base_confidence_ceiling=0.85
 corroboration     = min( external_corroboration_cap=0.15 , 0.05 * n_external )
 evidence_strength = clamp( base + corroboration )
 cold start (no prior belief): new = evidence_strength, old = 0
 existing belief:              new = old + 0.3 * (evidence_strength - old)
 delta = new - old   (all clamped to [0,1])
 ```
-> Caveat: when `base` already = 1.0 the corroboration term is absorbed by the clamp, so external
-> evidence only moves mid-confidence beliefs today. See HANDOFF "Known issues #6".
+> Claims alone cap a belief at the 0.85 ceiling; the reserved 0.15 headroom is filled only by
+> independent external corroboration (so reaching ~1.0 requires multiple sources). Validated:
+> n_external 0→0.85, 1→0.90, 7→1.00.
 Every `BeliefDelta` carries a `rationale` list spelling out these inputs. Module 12 appends a
 `BeliefHistoryEntry{ts, conf_before, conf_after, delta, source_id, supporting, contradicting}` —
 so any belief traces back to the sources that shaped it. Trend: new / accelerating / declining / stable.

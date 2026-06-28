@@ -22,7 +22,9 @@ llama_index, langchain, crewAI → 52 beliefs, 7 cross-run convergence, 21 exter
   README outbound repo links; routes each to its best concept via embedding of a rich concept rep
   (name + aliases + claim texts). Tune: `retrieval_match_threshold` (0.62), `retrieval_max_candidates` (6).
 - **m10**: routes external evidence to its concept packet by `concept_id`.
-- **m11**: bounded external corroboration term (`external_corroboration_weight` 0.05, `_cap` 0.15).
+- **m11**: claims cap a belief at `base_confidence_ceiling` (0.85); independent external
+  corroboration fills the reserved 0.15 headroom (`external_corroboration_weight` 0.05, `_cap` 0.15).
+  Validated: n_ext 0→0.85, 1→0.90, 7→1.00.
 - **m06 junk filter**: `filter_generic_concepts` drops all-generic concept names (e.g. `llm-framework`).
 - **Post voice**: `author_voice`="disciplined visionary"; m14/m15 ban cliches, force concrete specifics.
 
@@ -86,10 +88,10 @@ if you change vector-space or thresholds.
    can therefore look inconsistent — run the full pipeline for correct numbers.
 5. **Large repos**: ingest caps tree (2000), commits (30), releases (20); docs truncated to 6000
    chars for the LLM. Fine, but be aware when reasoning about coverage.
-6. **m11 corroboration saturates.** `evidence_strength = clamp(base + corroboration)`. When base is
-   already 1.0 (high mean_conf × high authority), external corroboration is recorded in the rationale
-   but absorbed by the clamp — it only moves mid-confidence beliefs. Needs rework to matter on maxed
-   beliefs (e.g. a separate corroboration score, or lower the base ceiling). Tracked as next step.
+6. ~~m11 corroboration saturates~~ **FIXED**: `base` is now scaled by `base_confidence_ceiling`
+   (0.85), reserving 0.15 headroom for external corroboration, so it moves even claims-maxed beliefs.
+   Side effect: a single-source belief now tops out at 0.85; reaching ~1.0 requires independent
+   corroboration (intended). Re-run / rebuild the graph to repersist confidences on the new scale.
 7. **m09 hits the live GitHub API** (search + get_repo) on every run — slower than the rest of the
    pipeline and counts against the rate limit. `gh` is injectable; tests use a fake.
 
@@ -99,8 +101,7 @@ if you change vector-space or thresholds.
 
 Ordered by value:
 
-1. **Fix m11 corroboration saturation** (see Known issues #6) — make external evidence move even
-   maxed beliefs so within-run convergence is numerically visible, not just recorded.
+1. ~~Fix m11 corroboration saturation~~ ✅ done (base_confidence_ceiling reserves headroom).
 2. ~~Module 8 (gap) real~~ ✅ done.
 3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). Optional follow-on: search-plugin adapters
    (Tavily/Brave) behind a `SearchPlugin` interface; dependency-file candidates in m09.

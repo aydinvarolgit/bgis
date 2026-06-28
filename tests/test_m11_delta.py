@@ -36,9 +36,9 @@ def _packets(stars=1200, polarities=("positive", "positive")):
     return EvidencePackets(source_id="src_test", packets=[pkt])
 
 
-def _expected_strength(stars=1200, mean=0.8):
+def _expected_strength(stars=1200, mean=0.8, ceiling=0.85):
     authority = max(0.0, min(1.0, math.log10(stars + 10.0) / 4.0))
-    return mean * (0.5 + 0.5 * authority), authority
+    return mean * (0.5 + 0.5 * authority) * ceiling, authority
 
 
 def test_belief_id_mapping():
@@ -90,12 +90,27 @@ def test_external_corroboration_capped(ctx):
     assert d.evidence_strength == pytest.approx(min(1.0, base + 0.15), abs=1e-5)
 
 
+def test_corroboration_lifts_claims_maxed_belief(ctx):
+    # Claims-maxed belief (mean 1.0, huge authority) sits at the ceiling without external...
+    claims = [Claim(id="c1", text="x", confidence=1.0, polarity="positive")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+                         signals=[Signal(name="stars", value=10_000_000, unit="count",
+                                         source_field="stars")])
+    pkts = EvidencePackets(source_id="src_test", packets=[pkt])
+    no_ext = m11_delta.run(pkts, RelatedBeliefs(source_id="src_test"), ctx).deltas[0]
+    assert no_ext.evidence_strength == pytest.approx(0.85, abs=1e-5)  # ceiling, not 1.0
+    # ...and 3 independent external sources lift it to 1.0 (corroboration now visible).
+    pkt.external = _external(3)
+    with_ext = m11_delta.run(pkts, RelatedBeliefs(source_id="src_test"), ctx).deltas[0]
+    assert with_ext.evidence_strength == pytest.approx(1.0, abs=1e-5)
+
+
 def test_clamp_high_authority(ctx):
     # Huge star count -> authority clamps to 1.0.
     out = m11_delta.run(_packets(stars=10_000_000), RelatedBeliefs(source_id="src_test"), ctx)
     d = out.deltas[0]
-    # mean 0.8, authority 1.0 -> strength = 0.8*1.0 = 0.8
-    assert d.evidence_strength == pytest.approx(0.8, abs=1e-5)
+    # mean 0.8, authority 1.0, ceiling 0.85 -> strength = 0.8*1.0*0.85 = 0.68
+    assert d.evidence_strength == pytest.approx(0.68, abs=1e-5)
     assert 0.0 <= d.new_conf <= 1.0
 
 

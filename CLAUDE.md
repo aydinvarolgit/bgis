@@ -37,10 +37,11 @@ The gap→retrieval→corroboration chain so a single run can pull in related ex
   claim texts) and routes each candidate to its best concept. `retrieval_match_threshold=0.62`
   (measured: true siblings ~0.68-0.71, off-topic <=0.60); `retrieval_max_candidates=6`.
 - **m10**: routes each external item to its concept packet by `concept_id` (was a dump-all bug).
-- **m11**: `evidence_strength = clamp(base + min(external_corroboration_cap=0.15,
-  external_corroboration_weight=0.05 * n_external))`, fully explainable in rationale.
-- **Known limit**: corroboration is absorbed when base already saturates (mean_conf 1.0 * authority
-  1.0 -> 1.0); it only moves mid-confidence beliefs today. m11 rework pending.
+- **m11**: `base = mean_conf*(0.5+0.5*authority)*base_confidence_ceiling(0.85)`; then
+  `evidence_strength = clamp(base + min(external_corroboration_cap=0.15, 0.05*n_external))`.
+  Claims alone cap a belief at 0.85; the reserved 0.15 headroom is filled by independent external
+  corroboration. Validated: n_ext 0→0.85, 1→0.90, 7→1.00. (Fixed the earlier saturation limit
+  where corroboration was absorbed by the clamp.) Fully explainable in rationale.
 - **Junk-concept filter (m06)**: drops contentless concepts (every token generic, e.g. `llm-framework`)
   via `_is_generic` + `filter_generic_concepts` (default True) — kills github-topic-tag over-merges.
 - **Post quality**: `author_voice`="disciplined visionary"; m14+m15 prompts ban cliches and force
