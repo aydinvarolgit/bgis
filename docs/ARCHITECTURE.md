@@ -9,17 +9,21 @@
 ## 1. Core idea
 
 ```
-Source (GitHub repo)
-   │  ingest → structured knowledge
+Source  (GitHub repo · Hacker News · arXiv · GH Discussions · RSS)
+   │  SourcePlugin.ingest → ParsedDocuments (source-agnostic from here)
    ▼
-Claims + Signals + Concepts
+Claims (typed fact/opinion/finding) + Signals + Concepts
    │  normalize into a GLOBAL concept space (dedup)
    ▼
 Belief Delta → Global Belief Graph (evolving, temporal, explainable)
-   │  content consumes the WORLDVIEW, blended with the author's own beliefs
+   │  facts+findings build confidence; opinions become belief STANCES
    ▼
-Narrative Plan → LinkedIn post
+Narrative Plan (argues from worldview + stances) → LinkedIn post
 ```
+
+Sources are pluggable (`bgis.sources`): a repo gives *what-facts*, HN/discussions give *opinions*,
+arXiv gives *findings*. They converge on shared `concept_id`s, so one belief can carry repo facts +
+paper findings + discourse stances at once (the dot-connecting payoff).
 
 Three knowledge layers:
 - **Global Belief Graph** (Layer 1): the system's evolving understanding. `data/beliefs/bel_*.json` + Chroma `beliefs` collection.
@@ -30,28 +34,50 @@ Three knowledge layers:
 
 ## 2. Pipeline (Modules 1–15)
 
-`bgis run <url>` chains these. Each is `run(inp, ctx) -> OutModel`, output persisted, inspectable via
-`bgis run-module <name> --source-id <id>`. **D** = deterministic, **L** = LLM (gemma4), **S** = stub.
+`bgis run <ref>` (ref = GitHub URL **or** `kind:query`, e.g. `hn:agent memory`) chains these. Each is
+`run(inp, ctx) -> OutModel`, output persisted, inspectable via `bgis run-module <name> --source-id <id>`.
+**D** = deterministic, **L** = LLM (gemma4), **S** = stub. Modules 1–3+5 (GitHub ingestion) now run
+behind a `SourcePlugin` (§2.5); non-GitHub sources produce `ParsedDocuments` directly.
 
 | # | Module | Type | In → Out | Notes |
 |--|--|--|--|--|
 | 1 | discovery | D | `DiscoveryRequest` → `Source` | URL validate; `source_id = src_<sha8(url)>` (stable) |
 | 2 | ingest | D | `Source` → `Repository` | PyGithub; defensive (missing readme/license ok) |
 | 3 | parse | D | `Repository` → `ParsedDocuments` | readme/architecture/dependencies/metadata docs. **Source-specific knowledge ends here.** |
-| 4 | claims | L | `ParsedDocuments` → `Claims` | semantic statements; temp=0; cached |
+| 4 | claims | L | `ParsedDocuments` → `Claims` | semantic statements, each **typed** fact/opinion/finding (guided by doc `[type]`); temp=0; cached |
 | 5 | signals | D | `Repository` → `Signals` | stars/forks/cadence/lang% — measurable facts, no LLM |
 | 6 | concepts | L | `Claims` → `Concepts` | **dedup engine**: normalize→embed→Chroma banded match; temp=0; cached |
 | 7 | belief_retrieval | D | `Concepts` → `RelatedBeliefs` | direct concept-link + semantic; cold start → empty |
 | 8 | gap | L | `Concepts+RelatedBeliefs` → `Gaps{Gap{concept_id,question,kind}}` | gemma4 gap questions per concept; temp=0 |
 | 9 | retrieval | D+API | `Gaps+Concepts+Claims+Repository` → `RetrievedEvidence` | GitHub-native: sibling repos (topic search + README links) → `RetrievedItem{concept_id,...}` |
 | 10 | evidence | D | `Concepts+Claims+Signals+...` → `EvidencePackets` | **real**; one packet/concept; routes external by `concept_id`; feeds Module 11 |
-| 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable belief-update math + bounded external corroboration (see §4) |
+| 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable math; confidence from fact+finding only, opinions→`stance_points`; corroboration ratchet (see §4) |
 | 12 | belief_update | D | `BeliefDeltas` → `BeliefGraphUpdate` | persists beliefs; appends temporal history; never overwrites |
 | 13 | user_beliefs | **S** | (file) → `UserBeliefs` | loads `data/user_beliefs.json` |
-| 14 | narrative | L | `BeliefGraphUpdate(beliefs)+UserBeliefs` → `NarrativePlan` | **plans from worldview, not source** |
+| 14 | narrative | L | `BeliefGraphUpdate(beliefs)+UserBeliefs` → `NarrativePlan` | **plans from worldview, not source**; STANCES/DEBATE block argues a position |
 | 15 | content | L | `NarrativePlan` → `GeneratedContent` | LinkedIn markdown → `data/posts/<id>.md` |
 
 All contracts live in `src/bgis/models.py` (single source of truth).
+
+---
+
+## 2.5 Source plugins (`src/bgis/sources/`)
+
+Everything after Module 3 consumes a generic `ParsedDocuments`, so a source only has to produce one.
+`SourcePlugin`: `matches(ref) -> bool` + `ingest(ref, ctx) -> IngestResult{source, parsed, signals,
+repo?}`. `resolve(ref)` returns the first matching plugin. `bgis run <ref>` and `pipeline.run` drive it.
+
+| plugin | ref | kind | notes |
+|--|--|--|--|
+| `GitHubSourcePlugin` | `https://github.com/o/r` | github | wraps m01→m02→m03+m05; **only** plugin that returns `repo` |
+| `HNSourcePlugin` | `hn:<query>` | hn | Algolia API (no auth/deps); story→`article` doc, comments→`discussion` |
+| `ArxivSourcePlugin` | `arxiv:<query>` | arxiv | Atom API, stdlib `xml.etree`; paper→`paper` doc (title+abstract) |
+| `GHDiscussionsSourcePlugin` | `ghd:owner/repo` | gh_discussions | PyGithub issues + GraphQL discussions (fails-soft) |
+| `RSSSourcePlugin` | `rss:<url>` \| `rss:all` | rss | `feedparser`; entry→`article` doc; curated `settings.rss_feeds` |
+
+`repo` is set **only** by GitHub because Module 9's sibling-repo retrieval is GitHub-native; the
+pipeline runs m09 only when `repo is not None` (other sources skip it). All HTTP getters are injectable
+(`fetch`/`gh`/`graphql`) so unit tests never touch the network. `DocType` += discussion/article/paper.
 
 ---
 
@@ -79,8 +105,10 @@ on re-run ⇒ belief ids fixed ⇒ deterministic evolution. `bgis run --fresh` b
 ## 4. Belief delta math (Module 11, deterministic & explainable)
 
 ```
+type_weight       = { fact: 1.0, finding: finding_weight=1.0, opinion: 0.0 }   # opinions excluded
+effective_conf(c) = c.confidence * type_weight[c.type]
 authority         = clamp( log10(stars + 10) / 4 , 0..1 )
-base              = mean(claim.confidence) * (0.5 + 0.5 * authority) * base_confidence_ceiling=0.85
+base              = mean(effective_conf over fact+finding) * (0.5 + 0.5*authority) * ceiling=0.85
 corroboration     = min( external_corroboration_cap=0.15 , 0.05 * n_external )
 evidence_strength = clamp( base + corroboration )
 cold start (no prior belief): new = evidence_strength, old = 0
@@ -90,6 +118,19 @@ delta = new - old   (all clamped to [0,1])
 > Claims alone cap a belief at the 0.85 ceiling; the reserved 0.15 headroom is filled only by
 > independent external corroboration (so reaching ~1.0 requires multiple sources). Validated:
 > n_external 0→0.85, 1→0.90, 7→1.00.
+
+**Claim typing (Gate A).** Only `fact` + `finding` claims build confidence; `opinion` claims are
+excluded and collected into `BeliefDelta.stance_points` → `Belief.stances` (Module 12 dedups, caps
+last 5) so Module 14 can argue them. A concept backed **only** by opinions still creates a belief at
+`pure_opinion_confidence=0.3` (cold start); on an existing belief, opinions never move confidence —
+they only append stances.
+
+**Corroboration ratchet.** For an existing belief, *supporting* evidence never lowers it: if a weaker
+but agreeing source (e.g. low-authority discourse with no stars → authority 0.25) yields an
+`evidence_strength` below the prior, the belief **holds** instead of regressing. Only *contradiction*
+(negative-polarity claims) can move confidence down. This keeps cross-source agreement monotone — an
+HN thread or arXiv paper corroborating a repo belief can only hold or raise it.
+
 Every `BeliefDelta` carries a `rationale` list spelling out these inputs. Module 12 appends a
 `BeliefHistoryEntry{ts, conf_before, conf_after, delta, source_id, supporting, contradicting}` —
 so any belief traces back to the sources that shaped it. Trend: new / accelerating / declining / stable.
@@ -108,8 +149,9 @@ src/bgis/
   embeddings.py    Ollama nomic-embed-text
   vectorstore.py   ChromaDB wrapper (cosine collections: concepts, beliefs)
   belief_store.py  BeliefStore: file-backed beliefs + Chroma index (shared by M7, M12)
-  pipeline.py      orchestrator: run() + run_<stage>() + load_<stage>()
-  cli.py           Typer: run / run-module / smoke
+  pipeline.py      orchestrator: run() (resolves SourcePlugin) + run_<stage>() + load_<stage>()
+  cli.py           Typer: run / run-module / graph / smoke
+  sources/         SourcePlugin interface + registry (github, hn, arxiv, gh_discussions, rss)
   modules/m01..m15 one file per module
 
 data/                    (gitignored, replayable)

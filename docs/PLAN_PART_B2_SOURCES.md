@@ -134,13 +134,16 @@ class SourcePlugin(ABC):
 - **Config:** per-source caps; `finding_weight`; curated RSS feed list; HN/arXiv default queries.
 - **Caching:** new sources should respect `use_cache` like m04/m06 (cache claims/concepts per source_id).
 
-## Open decisions to confirm at the start of next session
-1. **A1**: pure-opinion concept → skip vs low-confidence-with-stances (proposed: low-confidence 0.3).
-2. **finding_weight** value (proposed 1.0; bump to ~1.1 if papers should outweigh repo facts).
-3. **SourcePlugin refactor**: wrap existing GitHub path behind the interface (cleaner) vs add plugins
-   alongside the current pipeline (less churn). Proposed: wrap it (one clean abstraction).
-4. **CLI surface** for non-URL refs: `bgis run "kind:query"` (proposed) vs a `--source/--query` flag.
-5. Add `source_kind` to provenance now or later.
+## Open decisions — ALL SETTLED ✅ (2026-06-28)
+1. **A1**: pure-opinion concept → **low-confidence 0.3 + stances** (config `pure_opinion_confidence`).
+2. **finding_weight** = **1.0** (config; bump later if papers should outweigh repo facts).
+3. **SourcePlugin refactor**: **wrapped** the GitHub path behind `GitHubSourcePlugin` (one clean seam).
+4. **CLI surface**: **`bgis run "kind:query"`** (ref = URL or `kind:query`).
+5. **`source_kind`**: **deferred** — derive on demand from `data/raw/<source_id>.json` `type` field
+   (used for the "spans N source types" analysis). Add a denormalized field only if it's needed hot.
+
+> Built: Gates A–E shipped, 97 tests, live-validated. See `CLAUDE.md` "Part B-2" + `docs/ARCHITECTURE.md`
+> §2.5 (source plugins) + §4 (claim typing + corroboration ratchet).
 
 ## Status when this plan was written
 - Branch `part-b-gap-retrieval-corroboration` pushed (commits: feat part-b m8/9/11, fix m11 ceiling,

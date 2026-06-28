@@ -4,16 +4,30 @@ Read this first, then `docs/ARCHITECTURE.md` for detail. Quick status also in `C
 
 ---
 
-## Status: MVP COMPLETE ✅ + Part B (within-run convergence) in progress
+## Status: MVP COMPLETE ✅ + Part B ✅ + Part B-2 (multi-source POV) ✅
 
-GitHub repo URL → LinkedIn post, end-to-end, all 15 modules. **70 unit tests pass.**
-Cross-source belief convergence + reproducible deterministic evolution both validated live.
+Source ref → LinkedIn post, end-to-end, all 15 modules. **97 unit tests pass.**
+Cross-source AND cross-source-TYPE belief convergence + reproducible deterministic evolution
+validated live. `bgis run <ref>` where ref = GitHub URL **or** `kind:query` (`hn:`/`arxiv:`/`ghd:`/`rss:`).
 
-Done: Modules 1–15. **Modules 8 (gap), 9 (retrieval), 11 (corroboration) are now REAL** (were
-stubs) — see "Part B" below. Only Module 13 remains a stub (user beliefs from a static file).
-Concept dedup tuned (cosine bands + LLM merge pass) + junk-concept filter. Claims/concepts cached
-for reproducibility. Validated on 8 AI repos: caveman, autogen, simonw/llm, cognee, mem0,
-llama_index, langchain, crewAI → 52 beliefs, 7 cross-run convergence, 21 externally-corroborated deltas.
+Done: Modules 1–15. **Modules 8 (gap), 9 (retrieval), 11 (corroboration) are REAL** — see "Part B".
+**Part B-2 shipped**: claim typing + 5 source plugins (see below). Only Module 13 remains a stub
+(user beliefs from a static file). Concept dedup tuned (cosine bands + LLM merge pass) + junk-concept
+filter. Claims/concepts cached for reproducibility. Validated live: graph 164→185 beliefs, 11 span
+≥2 source types (one spans 3: arxiv+github+hn), 8 carry stances.
+
+## Part B-2 — opinionated multi-source ingestion ✅ (Gates A–E)
+- **Gate A claim typing**: `Claim.type` fact/opinion/finding (m04 classifies guided by each doc's
+  `[type]`). m11 builds confidence from **fact+finding only** (`effective_conf = conf*type_weight`,
+  opinion weight 0); opinions → `BeliefDelta.stance_points` → `Belief.stances` (m12 dedup, cap 5);
+  m14 STANCES/DEBATE block argues. Pure-opinion concept → belief at `pure_opinion_confidence` 0.3
+  (cold) / confidence untouched (existing). **Corroboration ratchet**: supporting evidence never
+  lowers an existing belief; only contradiction can.
+- **SourcePlugin** (`src/bgis/sources/`): `resolve(ref)`; GitHub wrapped behind `GitHubSourcePlugin`
+  (only one returning `repo`, so m09 stays GitHub-native). Sources: `hn:` (Algolia), `arxiv:` (Atom),
+  `ghd:owner/repo` (issues+discussions), `rss:url`|`rss:all` (feedparser). All fetchers injectable.
+
+## Part B — gap → retrieval → corroboration chain ✅
 
 ## Part B — gap → retrieval → corroboration chain ✅
 - **m08 gap**: gemma4 (temp=0) per claim-backed concept → `Gap{concept_id, question, kind}` (kinds:
@@ -50,7 +64,10 @@ Prereqs assumed present: Ollama running, models `gemma4:latest` + `nomic-embed-t
 
 ```bash
 bgis run https://github.com/owner/repo          # full pipeline → data/posts/<id>.md
-bgis run <url> --fresh                           # ignore cached claims/concepts, re-extract
+bgis run "hn:agent memory"                       # non-GitHub source: hn:/arxiv:/ghd:/rss:
+bgis run "arxiv:retrieval augmented generation"  # findings | bgis run "ghd:owner/repo" (debate)
+bgis run "rss:all"                               # curated feeds (settings.rss_feeds)
+bgis run <ref> --fresh                           # ignore cached claims/concepts, re-extract
 bgis run-module <name> --source-id <id>          # single module from persisted input
 bgis run-module discovery --url <url>            # discovery needs --url
 bgis graph                                       # read the belief graph (consensus/trends/momentum/pillars/fringe)
@@ -97,6 +114,12 @@ if you change vector-space or thresholds.
    corroboration (intended). Re-run / rebuild the graph to repersist confidences on the new scale.
 7. **m09 hits the live GitHub API** (search + get_repo) on every run — slower than the rest of the
    pipeline and counts against the rate limit. `gh` is injectable; tests use a fake.
+8. ~~Corroboration could LOWER a belief~~ **FIXED** (ratchet): a low-authority supporting source
+   (no stars→authority 0.25) no longer drags an established belief down — supporting evidence holds
+   or raises, only contradiction lowers. Confidences persisted *before* this fix (e.g. bel_05e54570
+   at 0.68) stay wrong until a graph rebuild repersists them.
+9. **Non-GitHub sources have no `repo`** → Module 9 (sibling retrieval) is skipped for them and they
+   emit no `stars` signal (authority falls back to the 0.25 baseline). By design.
 
 ---
 
@@ -108,8 +131,8 @@ Ordered by value:
 2. ~~Module 8 (gap) real~~ ✅ done.
 3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). Optional follow-on: search-plugin adapters
    (Tavily/Brave) behind a `SearchPlugin` interface; dependency-file candidates in m09.
-4. **Source plugins** — web article / PDF / arXiv ingestion feeding the same `ParsedDocuments`
-   contract (everything after Module 3 is already source-agnostic).
+4. ~~Source plugins~~ ✅ done (Part B-2): HN/arXiv/GH-Discussions/RSS behind `SourcePlugin`.
+   Optional follow-on: web-article/PDF plugins; article fetch + `trafilatura` for truncated feeds.
 5. **More media** — blog/report/newsletter `ContentGenerator`s (m15 interface ready).
 6. **Storage migration** — `BeliefStore` → Neo4j, `VectorStore` → Qdrant, behind current interfaces.
 7. **Contradiction handling** — Module 11 currently records contradicting claim ids; make
