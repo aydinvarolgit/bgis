@@ -59,7 +59,33 @@ def test_tone_defaults_to_author_voice(ctx):
 def test_belief_lines_includes_state():
     text = m14_narrative._belief_lines(_update())
     assert "Orchestration is winning" in text
-    assert "trend new" in text
+    assert "NEW from this source" in text  # bel_1 is in created_belief_ids
+
+
+def test_created_beliefs_lead_and_are_labeled():
+    # An updated cross-source belief plus a NEW one: the NEW (this source's) must come first.
+    now = datetime.now(timezone.utc)
+    h_new = BeliefHistoryEntry(ts=now, conf_before=0.0, conf_after=0.8, delta=0.8,
+                               source_id="src_b")
+    h_old = BeliefHistoryEntry(ts=now, conf_before=0.0, conf_after=0.95, delta=0.95,
+                               source_id="src_a")
+    h_reinforce = BeliefHistoryEntry(ts=now, conf_before=0.95, conf_after=0.97, delta=0.02,
+                                     source_id="src_b")
+    upd = BeliefGraphUpdate(
+        source_id="src_b",
+        created_belief_ids=["bel_new"],
+        updated_belief_ids=["bel_conv"],
+        beliefs=[
+            Belief(id="bel_conv", statement="prior source belief", confidence=0.97,
+                   trend="accelerating", history=[h_old, h_reinforce]),
+            Belief(id="bel_new", statement="this source belief", confidence=0.8,
+                   trend="new", history=[h_new]),
+        ],
+    )
+    lines = m14_narrative._belief_lines(upd).splitlines()
+    assert "NEW from this source" in lines[0]  # created leads despite lower confidence
+    assert "this source belief" in lines[0]
+    assert "reinforced, 2 independent sources" in lines[1]
 
 
 def test_handles_empty_worldview(ctx):

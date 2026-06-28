@@ -26,11 +26,14 @@ MAX_BELIEFS = 12
 SYSTEM_TEMPLATE = (
     "You are a content strategist planning a single LinkedIn post for an author whose voice is: "
     "{voice}. "
-    "Plan the post FROM THE WORLDVIEW below — the system's evolving global beliefs blended with "
-    "the author's own beliefs — NOT as a summary of any single source. Choose ONE clear main "
-    "message (main_belief) that is insightful and worth the author's reputation. Support it with "
-    "a few global/author beliefs, and acknowledge honest counterarguments. Where the global "
-    "beliefs and the author's beliefs tension, lean into that tension — it makes the post sharper. "
+    "Plan the post from the beliefs below — the worldview as just updated by a newly ingested "
+    "source. CENTER the post on what THIS source contributes: lead with the beliefs marked 'NEW "
+    "from this source' (they are the just-ingested repo's own claims). Use beliefs marked "
+    "'reinforced' as cross-source corroboration and the author's beliefs for stance — but the post "
+    "must be recognizably ABOUT the new source, not a generic essay. Choose ONE clear main message "
+    "(main_belief) that is insightful and worth the author's reputation, grounded in the NEW "
+    "beliefs. Acknowledge honest counterarguments. Where the beliefs and the author's beliefs "
+    "tension, lean into that tension — it makes the post sharper. "
     "\n\nGROUNDING RULES (critical): every evidence_point MUST be a concrete, checkable specific "
     "drawn from the beliefs below — name the real project(s), the capability, or the number. NO "
     "abstractions as evidence. When several beliefs are corroborated by multiple independent "
@@ -43,22 +46,28 @@ SYSTEM_TEMPLATE = (
 
 
 def _belief_lines(update: BeliefGraphUpdate) -> str:
-    # Strongest + most-recently-shifted beliefs first.
+    # Beliefs NEWLY asserted by the just-ingested source carry that source's own statements, so
+    # they lead — that keeps the post centered on the provided repo. Then strongest/most-shifted.
     def latest_delta(b):
         return abs(b.history[-1].delta) if b.history else 0.0
 
+    created = set(update.created_belief_ids)
     ranked = sorted(
-        update.beliefs, key=lambda b: (b.confidence, latest_delta(b)), reverse=True
+        update.beliefs,
+        key=lambda b: (b.id in created, b.confidence, latest_delta(b)),
+        reverse=True,
     )[:MAX_BELIEFS]
     lines = []
     for b in ranked:
         d = b.history[-1].delta if b.history else 0.0
-        # Distinct sources in history = independent corroboration; surface it for the planner.
         n_sources = len({h.source_id for h in b.history})
-        conv = f", {n_sources} independent sources" if n_sources > 1 else ""
-        lines.append(
-            f"- ({b.confidence:.2f}, trend {b.trend}, last_delta {d:+.2f}{conv}) {b.statement}"
-        )
+        if b.id in created:
+            tag = "NEW from this source"
+        elif n_sources > 1:
+            tag = f"reinforced, {n_sources} independent sources"
+        else:
+            tag = f"trend {b.trend}"
+        lines.append(f"- ({b.confidence:.2f}, {tag}, last_delta {d:+.2f}) {b.statement}")
     return "\n".join(lines) if lines else "(no global beliefs yet)"
 
 

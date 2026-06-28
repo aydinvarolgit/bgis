@@ -46,6 +46,10 @@ The gap→retrieval→corroboration chain so a single run can pull in related ex
   via `_is_generic` + `filter_generic_concepts` (default True) — kills github-topic-tag over-merges.
 - **Post quality**: `author_voice`="disciplined visionary"; m14+m15 prompts ban cliches and force
   naming real projects/numbers; m14 surfaces "N independent sources" per belief.
+- **Repo-centric posts**: m14 input (`BeliefGraphUpdate.beliefs`) is only the beliefs THIS run
+  touched. m14 ranks `created_belief_ids` first (they carry the just-ingested repo's own statements,
+  vs `updated` beliefs that may keep a prior source's statement) and the prompt centers the post on
+  them — so the post is recognizably about the provided repo, with reinforced beliefs as corroboration.
 - Validated: 8-repo rebuild -> 52 beliefs, 7 cross-run convergence, 21 externally-corroborated deltas.
 
 ## Cross-run dedup — TUNED ✅
