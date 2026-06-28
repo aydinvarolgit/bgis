@@ -13,7 +13,7 @@ authority). Gate G added the web-article plugin (`trafilatura` extraction).
 
 ```
 source ref → Ingest → Parse → Claims/Signals → Concepts(dedup) → Belief Retrieval
-→ Gap → Retrieval(GitHub siblings) → Evidence → Belief Delta → Global Belief Update
+→ Gap → Retrieval(GitHub siblings + opt-in backends: corpus/wiki/S2/crossref/plugins) → Evidence → Belief Delta → Global Belief Update
 → Narrative → LinkedIn post
 
 ref = GitHub URL | hn:<q> | arxiv:<q> | ghd:owner/repo | rss:<url>|rss:all | url:<article>|http(s)://…

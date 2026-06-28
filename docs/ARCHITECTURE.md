@@ -49,7 +49,7 @@ behind a `SourcePlugin` (§2.5); non-GitHub sources produce `ParsedDocuments` di
 | 6 | concepts | L | `Claims` → `Concepts` | **dedup engine**: normalize→embed→Chroma banded match; temp=0; cached |
 | 7 | belief_retrieval | D | `Concepts` → `RelatedBeliefs` | direct concept-link + semantic; cold start → empty |
 | 8 | gap | L | `Concepts+RelatedBeliefs` → `Gaps{Gap{concept_id,question,kind}}` | gemma4 gap questions per concept; temp=0 |
-| 9 | retrieval | D+API | `Gaps+Concepts+Claims+Repository` → `RetrievedEvidence` | GitHub-native: sibling repos (topic search + README links) → `RetrievedItem{concept_id,...}` |
+| 9 | retrieval | D+API | `Gaps+Concepts+Claims+Repository?` → `RetrievedEvidence` | GitHub-native sibling repos (topic search + README links) **+ opt-in `RetrievalBackend`s** (§2.6) for any source type → `RetrievedItem{concept_id,...}`; embed-gated at `retrieval_match_threshold` |
 | 10 | evidence | D | `Concepts+Claims+Signals+...` → `EvidencePackets` | **real**; one packet/concept; routes external by `concept_id`; feeds Module 11 |
 | 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable math; confidence from fact+finding only, opinions→`stance_points`; corroboration ratchet (see §4) |
 | 12 | belief_update | D | `BeliefDeltas` → `BeliefGraphUpdate` | persists beliefs; appends temporal history; never overwrites |
@@ -76,10 +76,35 @@ repo?}`. `resolve(ref)` returns the first matching plugin. `bgis run <ref>` and 
 | `RSSSourcePlugin` | `rss:<url>` \| `rss:all` | rss | `feedparser`; entry→`article` doc; curated `settings.rss_feeds` |
 | `WebArticleSourcePlugin` | `url:<u>` \| bare `http(s)://` | web | `trafilatura` main-content extract; page→`article` doc; **registered last** so GitHub keeps its URLs |
 
-`repo` is set **only** by GitHub because Module 9's sibling-repo retrieval is GitHub-native; the
-pipeline runs m09 only when `repo is not None` (other sources skip it). All HTTP getters are injectable
+`repo` is set **only** by GitHub because Module 9's sibling-repo retrieval is GitHub-native. The
+pipeline now **always** runs m09 (`repo` is optional): the sibling search fires only with a repo,
+while the §2.6 backends serve any source type. All HTTP getters are injectable
 (`fetch`/`gh`/`graphql`) so unit tests never touch the network. `DocType` += discussion/article/paper;
 `SourceType` += hn/arxiv/gh_discussions/rss/web.
+
+## 2.6 Retrieval backends (`src/bgis/retrieval/`)
+
+Module 9's GitHub-native sibling search is always-on and inline. Every OTHER way of acquiring
+external evidence is a `RetrievalBackend`: `candidates(gaps, concepts, claims, ctx) -> [Candidate]`.
+m09 embeds each `Candidate.text`, routes it to a concept (the candidate's `concept_id` hint, else
+best cosine match), gates at `retrieval_match_threshold`, dedups by url, caps `retrieval_max_per_concept`,
+and emits `RetrievedItem`s — so the relevance bar is identical across the GitHub path and all backends.
+
+| backend | flag (default **off**) | source | notes |
+|--|--|--|--|
+| `SourcePluginBackend` | `retrieval_use_source_plugins` | reuse arxiv/hn/github plugins | routed by gap **kind** (research/validation→arxiv, adoption/risk→hn, competitor/alternative→github); no new dep |
+| `LocalCorpusBackend` | `retrieval_use_local_corpus` | past `data/parsed/*.json` | embed-search previously-ingested docs (excl. current source); **zero network**, deterministic |
+| `ExternalApiBackend` | `retrieval_use_external_apis` | Wikipedia + Semantic Scholar + Crossref | keyless REST; per-concept; injectable getters; fail-soft per API |
+
+All default OFF, so GitHub-native remains the only default behavior (and non-repo sources still
+emit no external evidence) until a flag is set. Fan-out is bounded by `retrieval_plugin_max_gaps`,
+`retrieval_corpus_max_docs`, `retrieval_external_max_concepts`, etc. (see `config.py`). Enabling a
+backend lets a single run pull corroboration for **any** source type — e.g. a web article goes from
+0 → N external items feeding the §4 belief math.
+
+**Deferred** (user undecided 2026-06-28): a general open-web `SearchBackend` — DuckDuckGo (keyless
+`ddgs` lib) or self-hosted SearXNG — drops in via the same `candidates()` contract; the seam is ready.
+Bing is **not** an option (Microsoft retired the Bing Search APIs ~Aug 2025).
 
 ---
 
@@ -123,7 +148,8 @@ existing belief:              new = old + 0.3 * (evidence_strength - old)
 delta = new - old   (all clamped to [0,1])
 ```
 > Claims alone cap a belief at the 0.85 ceiling; the reserved 0.15 headroom is filled by a composite
-> of **external** corroboration (m09 siblings), **source-TYPE diversity** (repo-fact + paper-finding
+> of **external** corroboration (m09: GitHub siblings + any enabled §2.6 backend — corpus/wiki/S2/
+> crossref/plugins), **source-TYPE diversity** (repo-fact + paper-finding
 > + discourse agreeing), and **recency**, so reaching ~1.0 requires either many sources or
 > cross-TYPE agreement. external-only validated: n_external 0→0.85, 1→0.90, 7→1.00.
 
