@@ -18,15 +18,34 @@ that decoupling is the core idea.
 - Module 5 Signal Extraction ✅
 - Module 6 Concept Extraction & Normalization ✅ (gemma4 + nomic + Chroma dedup)
 - Module 7 Global Belief Retrieval ✅ (+ shared file-backed BeliefStore)
-- Module 8 Context Gap Analysis ✅ (STUB)
-- Module 9 Retrieval Engine ✅ (STUB)
-- Module 10 Evidence Packet Builder ✅ (real — packets per concept feed Module 11)
-- Module 11 Belief Delta Engine ✅ (deterministic, explainable; concept_id->bel_ mapping)
+- Module 8 Context Gap Analysis ✅ (REAL — gemma4 emits concept-tagged Gap{concept_id,question,kind})
+- Module 9 Retrieval Engine ✅ (REAL — GitHub-native: sibling repos via topic search + README links)
+- Module 10 Evidence Packet Builder ✅ (real — routes external evidence to its concept by concept_id)
+- Module 11 Belief Delta Engine ✅ (deterministic, explainable; concept_id->bel_ mapping; bounded external corroboration)
 - Module 12 Global Belief Graph Update ✅ (persists evolving beliefs + temporal history)
 - Module 13 User Belief Graph ✅ (7 author beliefs in data/user_beliefs.json)
 - Module 14 Narrative Planner ✅ (gemma4 over belief state + user beliefs; voice in settings.author_voice)
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
-- **MVP COMPLETE** — full `bgis run <url>` works end-to-end. 54 tests pass.
+- **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 68 tests pass.
+
+## Part B — within-run multi-source convergence ✅ (Modules 8/9/11 real)
+The gap→retrieval→corroboration chain so a single run can pull in related external evidence:
+- **m08 gap**: gemma4 (temp=0) over each claim-backed concept + related beliefs -> `Gap{concept_id,
+  question, kind}`, kinds = competitor/adoption/research/alternative/risk/validation; ≤6 concepts ×≤2 Q.
+- **m09 retrieval (GitHub-native, no new deps)**: finds sibling repos via distinctive-topic search
+  (`search_repositories`) + README outbound repo links; embeds a rich concept rep (name + aliases +
+  claim texts) and routes each candidate to its best concept. `retrieval_match_threshold=0.62`
+  (measured: true siblings ~0.68-0.71, off-topic <=0.60); `retrieval_max_candidates=6`.
+- **m10**: routes each external item to its concept packet by `concept_id` (was a dump-all bug).
+- **m11**: `evidence_strength = clamp(base + min(external_corroboration_cap=0.15,
+  external_corroboration_weight=0.05 * n_external))`, fully explainable in rationale.
+- **Known limit**: corroboration is absorbed when base already saturates (mean_conf 1.0 * authority
+  1.0 -> 1.0); it only moves mid-confidence beliefs today. m11 rework pending.
+- **Junk-concept filter (m06)**: drops contentless concepts (every token generic, e.g. `llm-framework`)
+  via `_is_generic` + `filter_generic_concepts` (default True) — kills github-topic-tag over-merges.
+- **Post quality**: `author_voice`="disciplined visionary"; m14+m15 prompts ban cliches and force
+  naming real projects/numbers; m14 surfaces "N independent sources" per belief.
+- Validated: 8-repo rebuild -> 52 beliefs, 7 cross-run convergence, 21 externally-corroborated deltas.
 
 ## Cross-run dedup — TUNED ✅
 Root cause was a VectorStore bug: Chroma used default L2 space with a `1-dist/2` approximation
@@ -54,7 +73,7 @@ Verified: caveman run twice -> same 8 belief ids, 0 forks, all history_len=2. By
 ## Full docs
 - `docs/ARCHITECTURE.md` — pipeline, every module I/O contract, formulas, data layout, decisions.
 - `docs/HANDOFF.md` — current state, how to run, what's done/stubbed, known issues, next steps.
-- Stubs (MVP): Modules 8, 9, 10, 13.
+- Remaining stub: Module 13 (user beliefs seeded from a static file, not a live questionnaire).
 
 ## Setup
 ```bash

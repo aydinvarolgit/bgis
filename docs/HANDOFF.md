@@ -4,14 +4,27 @@ Read this first, then `docs/ARCHITECTURE.md` for detail. Quick status also in `C
 
 ---
 
-## Status: MVP COMPLETE ✅
+## Status: MVP COMPLETE ✅ + Part B (within-run convergence) in progress
 
-GitHub repo URL → LinkedIn post, end-to-end, all 15 modules. **57 unit tests pass.**
+GitHub repo URL → LinkedIn post, end-to-end, all 15 modules. **68 unit tests pass.**
 Cross-source belief convergence + reproducible deterministic evolution both validated live.
 
-Done: Modules 1–15 (8/9/10-external/13 are stubs by design). Concept dedup tuned (cosine bands +
-LLM merge pass). Claims/concepts cached for reproducibility. User belief graph seeded (7 author
-beliefs). Validated on 3 repos: caveman, microsoft/autogen, simonw/llm.
+Done: Modules 1–15. **Modules 8 (gap), 9 (retrieval), 11 (corroboration) are now REAL** (were
+stubs) — see "Part B" below. Only Module 13 remains a stub (user beliefs from a static file).
+Concept dedup tuned (cosine bands + LLM merge pass) + junk-concept filter. Claims/concepts cached
+for reproducibility. Validated on 8 AI repos: caveman, autogen, simonw/llm, cognee, mem0,
+llama_index, langchain, crewAI → 52 beliefs, 7 cross-run convergence, 21 externally-corroborated deltas.
+
+## Part B — gap → retrieval → corroboration chain ✅
+- **m08 gap**: gemma4 (temp=0) per claim-backed concept → `Gap{concept_id, question, kind}` (kinds:
+  competitor/adoption/research/alternative/risk/validation); ≤6 concepts × ≤2 questions.
+- **m09 retrieval (GitHub-native)**: sibling repos via distinctive-topic `search_repositories` +
+  README outbound repo links; routes each to its best concept via embedding of a rich concept rep
+  (name + aliases + claim texts). Tune: `retrieval_match_threshold` (0.62), `retrieval_max_candidates` (6).
+- **m10**: routes external evidence to its concept packet by `concept_id`.
+- **m11**: bounded external corroboration term (`external_corroboration_weight` 0.05, `_cap` 0.15).
+- **m06 junk filter**: `filter_generic_concepts` drops all-generic concept names (e.g. `llm-framework`).
+- **Post voice**: `author_voice`="disciplined visionary"; m14/m15 ban cliches, force concrete specifics.
 
 ---
 
@@ -73,6 +86,12 @@ if you change vector-space or thresholds.
    can therefore look inconsistent — run the full pipeline for correct numbers.
 5. **Large repos**: ingest caps tree (2000), commits (30), releases (20); docs truncated to 6000
    chars for the LLM. Fine, but be aware when reasoning about coverage.
+6. **m11 corroboration saturates.** `evidence_strength = clamp(base + corroboration)`. When base is
+   already 1.0 (high mean_conf × high authority), external corroboration is recorded in the rationale
+   but absorbed by the clamp — it only moves mid-confidence beliefs. Needs rework to matter on maxed
+   beliefs (e.g. a separate corroboration score, or lower the base ceiling). Tracked as next step.
+7. **m09 hits the live GitHub API** (search + get_repo) on every run — slower than the rest of the
+   pipeline and counts against the rate limit. `gh` is injectable; tests use a fake.
 
 ---
 
@@ -80,12 +99,11 @@ if you change vector-space or thresholds.
 
 Ordered by value:
 
-1. **Cross-source recall tuning** — validate concept merges across many AI repos; tune
-   `concept_auto_merge_threshold`. Current bias is precision (few false merges, some missed links).
-2. **Module 8 (gap) real** — LLM generates questions (competitors? papers? growth?).
-3. **Module 9 (retrieval) real** — follow repo links/deps/topics; optional search-plugin adapters
-   (Tavily/Brave) behind a `SourcePlugin`/`SearchPlugin` interface. Then Module 10 gets external
-   evidence → multi-source convergence per single run.
+1. **Fix m11 corroboration saturation** (see Known issues #6) — make external evidence move even
+   maxed beliefs so within-run convergence is numerically visible, not just recorded.
+2. ~~Module 8 (gap) real~~ ✅ done.
+3. ~~Module 9 (retrieval) real~~ ✅ done (GitHub-native). Optional follow-on: search-plugin adapters
+   (Tavily/Brave) behind a `SearchPlugin` interface; dependency-file candidates in m09.
 4. **Source plugins** — web article / PDF / arXiv ingestion feeding the same `ParsedDocuments`
    contract (everything after Module 3 is already source-agnostic).
 5. **More media** — blog/report/newsletter `ContentGenerator`s (m15 interface ready).

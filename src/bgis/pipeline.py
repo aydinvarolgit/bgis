@@ -123,8 +123,10 @@ def run_gap(concepts: Concepts, related: RelatedBeliefs, ctx: Context) -> Gaps:
     return gaps
 
 
-def run_retrieval(gaps: Gaps, ctx: Context) -> RetrievedEvidence:
-    retrieved = m09_retrieval.run(gaps, ctx)
+def run_retrieval(
+    gaps: Gaps, concepts: Concepts, claims: Claims, repo: Repository, ctx: Context
+) -> RetrievedEvidence:
+    retrieved = m09_retrieval.run(gaps, concepts, claims, repo, ctx)
     save_artifact(ctx.settings, "beliefs", f"{retrieved.source_id}_retrieved", retrieved)
     return retrieved
 
@@ -169,7 +171,7 @@ def run(url: str, ctx: Context | None = None) -> GeneratedContent:
     concepts = run_concepts(claims, ctx)
     related = run_belief_retrieval(concepts, ctx)
     gaps = run_gap(concepts, related, ctx)
-    retrieved = run_retrieval(gaps, ctx)
+    retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
     packets = run_evidence(concepts, claims, signals, related, retrieved, ctx)
     deltas = run_delta(packets, related, ctx)
     update = run_belief_update(deltas, ctx)

@@ -148,13 +148,34 @@ def run_module(
         concepts = pipeline.load_concepts(ctx, source_id)
         related = pipeline.load_related(ctx, source_id)
         gaps = pipeline.run_gap(concepts, related, ctx)
-        rprint({"source_id": gaps.source_id, "questions": gaps.questions})
+        rprint(
+            {
+                "source_id": gaps.source_id,
+                "count": len(gaps.gaps),
+                "gaps": [
+                    {"concept_id": g.concept_id, "kind": g.kind, "question": g.question}
+                    for g in gaps.gaps
+                ],
+            }
+        )
     elif name == "retrieval":
         if not source_id:
             raise typer.BadParameter("retrieval needs --source-id")
         gaps = pipeline.load_gaps(ctx, source_id)
-        retrieved = pipeline.run_retrieval(gaps, ctx)
-        rprint({"source_id": retrieved.source_id, "items": len(retrieved.items)})
+        concepts = pipeline.load_concepts(ctx, source_id)
+        claims = pipeline.load_claims(ctx, source_id)
+        repo = pipeline.load_repository(ctx, source_id)
+        retrieved = pipeline.run_retrieval(gaps, concepts, claims, repo, ctx)
+        rprint(
+            {
+                "source_id": retrieved.source_id,
+                "count": len(retrieved.items),
+                "items": [
+                    {"concept_id": it.concept_id, "url": it.source_url, "summary": it.summary}
+                    for it in retrieved.items
+                ],
+            }
+        )
     elif name == "evidence":
         if not source_id:
             raise typer.BadParameter("evidence needs --source-id")

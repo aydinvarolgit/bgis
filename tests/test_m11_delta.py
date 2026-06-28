@@ -8,9 +8,18 @@ from bgis.models import (
     EvidencePacket,
     EvidencePackets,
     RelatedBeliefs,
+    RetrievedItem,
     Signal,
 )
 from bgis.modules import m11_delta
+
+
+def _external(n):
+    return [
+        RetrievedItem(concept_id="concept_ab12cd34", question="q",
+                      source_url=f"https://github.com/o/r{i}", summary=f"r{i}")
+        for i in range(n)
+    ]
 
 
 def _packets(stars=1200, polarities=("positive", "positive")):
@@ -61,6 +70,24 @@ def test_update_moves_toward_evidence(ctx):
     assert d.new_conf == pytest.approx(expected_new, abs=1e-5)
     assert d.delta == pytest.approx(expected_new - 0.5, abs=1e-5)
     assert d.statement == "old stmt"  # keeps existing belief statement
+
+
+def test_external_corroboration_raises_strength(ctx):
+    base, _ = _expected_strength()
+    pkts = _packets()
+    pkts.packets[0].external = _external(2)  # 2 * 0.05 = 0.10 corroboration
+    out = m11_delta.run(pkts, RelatedBeliefs(source_id="src_test"), ctx)
+    d = out.deltas[0]
+    assert d.evidence_strength == pytest.approx(min(1.0, base + 0.10), abs=1e-5)
+
+
+def test_external_corroboration_capped(ctx):
+    base, _ = _expected_strength()
+    pkts = _packets()
+    pkts.packets[0].external = _external(10)  # 10*0.05=0.50 -> capped at 0.15
+    out = m11_delta.run(pkts, RelatedBeliefs(source_id="src_test"), ctx)
+    d = out.deltas[0]
+    assert d.evidence_strength == pytest.approx(min(1.0, base + 0.15), abs=1e-5)
 
 
 def test_clamp_high_authority(ctx):

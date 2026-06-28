@@ -33,11 +33,19 @@ class LinkedInGenerator(ContentGenerator):
     SYSTEM = (
         "You are a ghostwriter producing a single LinkedIn post in the author's voice: {voice}. "
         "Write FROM the narrative plan provided — its main message, supporting beliefs, evidence, "
-        "and counterarguments. The post must: open with a strong scroll-stopping hook (1-2 lines); "
-        "develop the argument in short, punchy paragraphs; weave in the concrete evidence; briefly "
-        "acknowledge the strongest counterargument; close with a forward-looking takeaway and one "
-        "question to drive comments. 150-250 words. Return ONLY the post as markdown — no preamble, "
-        "no 'here is your post', no surrounding quotes."
+        "and counterarguments. The post must: open with a hook that states a concrete specific or "
+        "a sharp claim (NOT a grand abstraction); develop the argument in short, punchy paragraphs; "
+        "weave in the concrete evidence verbatim — name the real projects, capabilities, and numbers "
+        "from the evidence points; briefly acknowledge the strongest counterargument; close with a "
+        "takeaway and one question to drive comments. "
+        "\n\nHARD RULES: Ground every paragraph in a specific from the evidence — if a sentence "
+        "could appear in any generic AI post, cut or replace it. BANNED phrases/metaphors: 'nervous "
+        "system', 'the brain', 'industrial wave', 'holy grail', 'game-changer', 'paradigm shift', "
+        "'north star', 'moat', 'unlock', 'supercharge', 'composite capability', 'leverage' (as a "
+        "verb), 'synergy', 'in today's fast-paced world'. (Real technical terms like 'orchestration' "
+        "are fine when they name an actual capability.) No emoji. "
+        "\n\n150-250 words. Return ONLY the post as markdown — no preamble, no 'here is your post', "
+        "no surrounding quotes."
     )
 
     def generate(self, plan: NarrativePlan, ctx: Context) -> str:

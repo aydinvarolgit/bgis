@@ -58,7 +58,14 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
         belief_id = belief_id_for_concept(packet.concept_id)
         mean_conf = sum(c.confidence for c in packet.claims) / len(packet.claims)
         authority = _authority(packet)
-        evidence_strength = _clamp(mean_conf * (0.5 + 0.5 * authority))
+        base_strength = mean_conf * (0.5 + 0.5 * authority)
+        # External corroboration: independent repos backing this concept nudge strength up,
+        # bounded so external evidence can't dominate the source's own claims.
+        corroboration = min(
+            ctx.settings.external_corroboration_cap,
+            ctx.settings.external_corroboration_weight * len(packet.external),
+        )
+        evidence_strength = _clamp(base_strength + corroboration)
 
         prior = existing.get(belief_id)
         old_conf = prior.confidence if prior else 0.0
@@ -75,8 +82,9 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
         rationale = [
             f"{len(packet.claims)} claim(s), mean confidence {mean_conf:.3f}",
             f"authority {authority:.3f} from source signals (stars)",
-            f"evidence_strength = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) "
-            f"= {evidence_strength:.3f}",
+            f"base = {mean_conf:.3f} * (0.5 + 0.5*{authority:.3f}) = {base_strength:.3f}",
+            f"+ corroboration {corroboration:.3f} ({len(packet.external)} external) "
+            f"-> evidence_strength = {evidence_strength:.3f}",
             (
                 f"cold start: new = evidence_strength = {new_conf:.3f}"
                 if prior is None

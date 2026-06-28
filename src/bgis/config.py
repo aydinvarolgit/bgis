@@ -48,10 +48,26 @@ class Settings(BaseSettings):
     # in between -> LLM adjudicates (the concept-merge pass).
     concept_similarity_threshold: float = 0.60  # lower bound to even consider a merge
     concept_auto_merge_threshold: float = 0.72  # at/above this, merge without asking the LLM
+    # Drop contentless concept names (every token generic, e.g. "llm-framework"). These are
+    # github-topic-tag-style buckets that over-merge across unrelated repos. See m06.
+    filter_generic_concepts: bool = True
     belief_retrieval_threshold: float = 0.50  # looser: surface related (not identical) beliefs
 
-    # Author voice for narrative/content (from the user-belief questionnaire).
-    author_voice: str = "visionary, big-picture, future-oriented"
+    # Module 9 (GitHub-native retrieval): how many external related repos to fetch per source,
+    # and the min cosine sim to attach a fetched repo to one of the source's concepts.
+    retrieval_max_candidates: int = 6
+    # Measured (richer name+claims concept rep): true siblings ~0.68-0.71, off-topic <=0.60.
+    retrieval_match_threshold: float = 0.62
+    # Module 11: each external corroboration nudges evidence_strength up by this much, capped.
+    external_corroboration_weight: float = 0.05
+    external_corroboration_cap: float = 0.15
+
+    # Author voice for narrative/content. "Disciplined visionary": big-picture framing, but every
+    # abstraction must cash out in a concrete, specific example — no metaphors, no LinkedIn cliches.
+    author_voice: str = (
+        "a disciplined visionary — frames the big picture, but anchors every claim to a concrete, "
+        "specific example (real project names, capabilities, numbers); avoids metaphors and hype"
+    )
 
     # Cache LLM-extraction artifacts (claims, concepts) per source_id and reuse them on
     # re-runs, so the belief graph is reproducible despite LLM non-determinism. Set False

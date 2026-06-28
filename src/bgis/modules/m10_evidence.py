@@ -36,6 +36,11 @@ def run(
 ) -> EvidencePackets:
     claim_by_id = {c.id: c for c in claims.claims}
 
+    # Route external evidence to the concept it corroborates (m09 tags each with concept_id).
+    external_by_concept: dict[str, list] = {}
+    for item in retrieved.items:
+        external_by_concept.setdefault(item.concept_id, []).append(item)
+
     packets: list[EvidencePacket] = []
     for concept in concepts.concepts:
         pkt_claims = [claim_by_id[cid] for cid in concept.from_claims if cid in claim_by_id]
@@ -47,7 +52,7 @@ def run(
                 concept_name=concept.name,
                 claims=pkt_claims,
                 signals=signals.signals,  # source-wide authority/momentum signals
-                external=list(retrieved.items),  # empty in MVP
+                external=external_by_concept.get(concept.id, []),
                 summary=_summary(concept.name, pkt_claims, signals),
             )
         )

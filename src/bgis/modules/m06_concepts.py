@@ -34,6 +34,28 @@ ALIAS_MAP = {
     "large language models": "llm",
 }
 
+# Contentless tokens. A concept whose every token is in here carries no specific meaning
+# (e.g. "llm-framework", "framework", "ai model") and acts as a github-topic-tag bucket that
+# over-merges unrelated repos. Such concepts are dropped (settings.filter_generic_concepts).
+# A name with >=1 token outside this set (e.g. "multi-agent system", "langchain framework") is kept.
+GENERIC_TOKENS = {
+    "ai", "llm", "llms", "model", "models", "modeling",
+    "framework", "frameworks", "library", "libraries", "tool", "tools",
+    "platform", "platforms", "application", "applications", "app", "apps",
+    "system", "systems", "software", "project", "projects",
+    "support", "supports", "topic", "topics", "various", "general", "generic",
+    "data", "component", "components", "module", "modules",
+    "feature", "features", "capability", "capabilities",
+    "technology", "technologies", "solution", "solutions", "service", "services",
+}
+
+
+def _is_generic(normalized: str) -> bool:
+    """True if every token is contentless (split on space/hyphen/slash). Empty -> generic."""
+    tokens = [t for t in re.split(r"[\s\-/]+", normalized) if t]
+    return bool(tokens) and all(t in GENERIC_TOKENS for t in tokens)
+
+
 SYSTEM = (
     "You identify the key technical CONCEPTS expressed across a set of claims about a software "
     "project. A concept is a reusable noun phrase naming a technology, method, capability, or "
@@ -97,6 +119,8 @@ def run(inp: Claims, ctx: Context) -> Concepts:
         normalized = normalize_concept(draft.name)
         if not normalized:
             continue
+        if ctx.settings.filter_generic_concepts and _is_generic(normalized):
+            continue  # contentless bucket (e.g. "llm-framework") -> don't mint/merge a belief
         embedding = ctx.embedder.embed(normalized)
         match = _resolve_match(normalized, embedding, ctx)
 

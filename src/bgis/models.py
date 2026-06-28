@@ -212,22 +212,42 @@ class RelatedBeliefs(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Module 8 — Context Gap Analysis (STUB in MVP)
+# Module 8 — Context Gap Analysis
 # --------------------------------------------------------------------------- #
+
+GapKind = Literal["competitor", "adoption", "research", "alternative", "risk", "validation"]
+
+
+class Gap(BaseModel):
+    concept_id: str  # the concept whose belief this question would strengthen/contradict
+    question: str
+    kind: GapKind
+
+
+class GapDraft(BaseModel):
+    """LLM output per concept: questions to ask about it (concept_id added by m08)."""
+
+    question: str
+    kind: GapKind
+
+
+class GapDraftList(BaseModel):
+    gaps: list[GapDraft] = Field(default_factory=list)
 
 
 class Gaps(BaseModel):
     source_id: str
-    questions: list[str] = Field(default_factory=list)
+    gaps: list[Gap] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #
-# Module 9 — Retrieval Engine (STUB in MVP)
+# Module 9 — Retrieval Engine
 # --------------------------------------------------------------------------- #
 
 
 class RetrievedItem(BaseModel):
-    question: str
+    concept_id: str  # the concept this external evidence corroborates (routed by m10)
+    question: str  # the gap question it answers (or a synthesized relevance note)
     source_url: str
     summary: str
 

@@ -8,6 +8,42 @@ def test_normalize_lowercases_singularizes_aliases():
     assert m06_concepts.normalize_concept("LLMs!!!") == "llm"  # alias + punctuation
 
 
+def test_is_generic_predicate():
+    # all-generic tokens -> junk bucket
+    assert m06_concepts._is_generic("llm-framework")
+    assert m06_concepts._is_generic("framework")
+    assert m06_concepts._is_generic("ai model")
+    # >=1 specific token -> kept
+    assert not m06_concepts._is_generic("multi-agent system")
+    assert not m06_concepts._is_generic("langchain framework")
+    assert not m06_concepts._is_generic("ai coding agent")
+    assert not m06_concepts._is_generic("token compression")
+
+
+def test_generic_concept_dropped(ctx):
+    ctx = _ctx_with_orthogonal(ctx)
+    ctx.llm.structured_responses["ConceptDraftList"] = ConceptDraftList(
+        concepts=[
+            ConceptDraft(name="llm-framework", from_claims=["c1"]),  # junk -> dropped
+            ConceptDraft(name="multi-agent systems", from_claims=["c1"]),  # kept
+        ]
+    )
+    out = m06_concepts.run(_claims("c1"), ctx)
+    names = {c.name for c in out.concepts}
+    assert names == {"multi-agent system"}
+
+
+def test_generic_filter_off_keeps_junk(ctx):
+    ctx = _ctx_with_orthogonal(ctx)
+    ctx.embedder.table["llm-framework"] = [0.0, 0.0, 0.0, 1.0]
+    ctx.settings.filter_generic_concepts = False
+    ctx.llm.structured_responses["ConceptDraftList"] = ConceptDraftList(
+        concepts=[ConceptDraft(name="llm-framework", from_claims=["c1"])]
+    )
+    out = m06_concepts.run(_claims("c1"), ctx)
+    assert {c.name for c in out.concepts} == {"llm-framework"}
+
+
 def _claims(*ids):
     return Claims(
         source_id="src_test",

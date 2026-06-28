@@ -29,10 +29,16 @@ SYSTEM_TEMPLATE = (
     "Plan the post FROM THE WORLDVIEW below — the system's evolving global beliefs blended with "
     "the author's own beliefs — NOT as a summary of any single source. Choose ONE clear main "
     "message (main_belief) that is insightful and worth the author's reputation. Support it with "
-    "a few global/author beliefs, ground it in concrete evidence_points, and acknowledge honest "
-    "counterarguments. Where the global beliefs and the author's beliefs tension, lean into that "
-    "tension — it makes the post sharper. Set tone to match the author's voice and confidence in "
-    "[0,1] reflecting how strongly the evidence supports the main message."
+    "a few global/author beliefs, and acknowledge honest counterarguments. Where the global "
+    "beliefs and the author's beliefs tension, lean into that tension — it makes the post sharper. "
+    "\n\nGROUNDING RULES (critical): every evidence_point MUST be a concrete, checkable specific "
+    "drawn from the beliefs below — name the real project(s), the capability, or the number. NO "
+    "abstractions as evidence. When several beliefs are corroborated by multiple independent "
+    "sources, call that convergence out explicitly (it is the strongest evidence you have). "
+    "BANNED: metaphors and cliches (e.g. 'nervous system', 'the brain', 'industrial wave', 'holy "
+    "grail', 'game-changer', 'north star', 'the moat is'), and vague grandiosity with no specifics. "
+    "\n\nSet tone to match the author's voice and confidence in [0,1] reflecting how strongly the "
+    "evidence supports the main message."
 )
 
 
@@ -47,8 +53,11 @@ def _belief_lines(update: BeliefGraphUpdate) -> str:
     lines = []
     for b in ranked:
         d = b.history[-1].delta if b.history else 0.0
+        # Distinct sources in history = independent corroboration; surface it for the planner.
+        n_sources = len({h.source_id for h in b.history})
+        conv = f", {n_sources} independent sources" if n_sources > 1 else ""
         lines.append(
-            f"- ({b.confidence:.2f}, trend {b.trend}, last_delta {d:+.2f}) {b.statement}"
+            f"- ({b.confidence:.2f}, trend {b.trend}, last_delta {d:+.2f}{conv}) {b.statement}"
         )
     return "\n".join(lines) if lines else "(no global beliefs yet)"
 

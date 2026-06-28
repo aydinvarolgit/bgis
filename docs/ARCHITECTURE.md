@@ -42,10 +42,10 @@ Three knowledge layers:
 | 5 | signals | D | `Repository` → `Signals` | stars/forks/cadence/lang% — measurable facts, no LLM |
 | 6 | concepts | L | `Claims` → `Concepts` | **dedup engine**: normalize→embed→Chroma banded match; temp=0; cached |
 | 7 | belief_retrieval | D | `Concepts` → `RelatedBeliefs` | direct concept-link + semantic; cold start → empty |
-| 8 | gap | **S** | `Concepts+RelatedBeliefs` → `Gaps{[]}` | future: LLM gap questions |
-| 9 | retrieval | **S** | `Gaps` → `RetrievedEvidence{[]}` | future: external evidence plugins |
-| 10 | evidence | D | `Concepts+Claims+Signals+...` → `EvidencePackets` | **real**; one packet/concept; feeds Module 11 |
-| 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable belief-update math (see §4) |
+| 8 | gap | L | `Concepts+RelatedBeliefs` → `Gaps{Gap{concept_id,question,kind}}` | gemma4 gap questions per concept; temp=0 |
+| 9 | retrieval | D+API | `Gaps+Concepts+Claims+Repository` → `RetrievedEvidence` | GitHub-native: sibling repos (topic search + README links) → `RetrievedItem{concept_id,...}` |
+| 10 | evidence | D | `Concepts+Claims+Signals+...` → `EvidencePackets` | **real**; one packet/concept; routes external by `concept_id`; feeds Module 11 |
+| 11 | delta | D | `EvidencePackets+RelatedBeliefs` → `BeliefDeltas` | explainable belief-update math + bounded external corroboration (see §4) |
 | 12 | belief_update | D | `BeliefDeltas` → `BeliefGraphUpdate` | persists beliefs; appends temporal history; never overwrites |
 | 13 | user_beliefs | **S** | (file) → `UserBeliefs` | loads `data/user_beliefs.json` |
 | 14 | narrative | L | `BeliefGraphUpdate(beliefs)+UserBeliefs` → `NarrativePlan` | **plans from worldview, not source** |
@@ -80,11 +80,15 @@ on re-run ⇒ belief ids fixed ⇒ deterministic evolution. `bgis run --fresh` b
 
 ```
 authority         = clamp( log10(stars + 10) / 4 , 0..1 )
-evidence_strength = clamp( mean(claim.confidence) * (0.5 + 0.5 * authority) )
+base              = mean(claim.confidence) * (0.5 + 0.5 * authority)
+corroboration     = min( external_corroboration_cap=0.15 , 0.05 * n_external )
+evidence_strength = clamp( base + corroboration )
 cold start (no prior belief): new = evidence_strength, old = 0
 existing belief:              new = old + 0.3 * (evidence_strength - old)
 delta = new - old   (all clamped to [0,1])
 ```
+> Caveat: when `base` already = 1.0 the corroboration term is absorbed by the clamp, so external
+> evidence only moves mid-confidence beliefs today. See HANDOFF "Known issues #6".
 Every `BeliefDelta` carries a `rationale` list spelling out these inputs. Module 12 appends a
 `BeliefHistoryEntry{ts, conf_before, conf_after, delta, source_id, supporting, contradicting}` —
 so any belief traces back to the sources that shaped it. Trend: new / accelerating / declining / stable.
