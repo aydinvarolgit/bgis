@@ -3,11 +3,16 @@
 Sources update an evolving **belief graph**; content is generated from that worldview,
 **not** from any single source document. That decoupling is the core idea (vs RAG/summarization).
 
-**Status: MVP complete** — GitHub repo URL → LinkedIn post, all 15 modules, 57 tests pass.
+**Status: MVP complete + Part B** — GitHub repo URL → LinkedIn post, all 15 modules, 70 tests pass.
+Part B adds *within-run multi-source convergence*: Modules 8 (gap questions), 9 (GitHub-native
+retrieval of sibling repos) and 11 (bounded external corroboration) are now real, plus a junk-concept
+filter and a source-grounded "disciplined visionary" post voice. Next: opinionated sources (HN/arXiv/
+blogs) for expert POV posts — see `docs/PLAN_PART_B2_SOURCES.md`.
 
 ```
 GitHub repo URL → Ingest → Parse → Claims/Signals → Concepts(dedup) → Belief Retrieval
-→ [Gap/Retrieval/Evidence] → Belief Delta → Global Belief Update → Narrative → LinkedIn post
+→ Gap → Retrieval(GitHub siblings) → Evidence → Belief Delta → Global Belief Update
+→ Narrative → LinkedIn post
 ```
 
 ## Quick start
@@ -24,6 +29,7 @@ bgis run https://github.com/juliusbrussee/caveman
 - **`docs/HANDOFF.md`** — run it, reset it, known gotchas, next steps. Start here to continue work.
 - **`docs/ARCHITECTURE.md`** — pipeline, every module contract, formulas, design decisions.
 - **`CLAUDE.md`** — quick status + setup.
+- **`docs/PLAN_PART_B2_SOURCES.md`** — next roadmap: opinionated multi-source ingestion.
 - Contracts: `src/bgis/models.py`. Plan/vision: `~/.claude/plans/i-want-a-good-swirling-nebula.md`.
 
 ## Stack

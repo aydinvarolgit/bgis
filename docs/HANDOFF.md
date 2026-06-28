@@ -6,7 +6,7 @@ Read this first, then `docs/ARCHITECTURE.md` for detail. Quick status also in `C
 
 ## Status: MVP COMPLETE ✅ + Part B (within-run convergence) in progress
 
-GitHub repo URL → LinkedIn post, end-to-end, all 15 modules. **68 unit tests pass.**
+GitHub repo URL → LinkedIn post, end-to-end, all 15 modules. **70 unit tests pass.**
 Cross-source belief convergence + reproducible deterministic evolution both validated live.
 
 Done: Modules 1–15. **Modules 8 (gap), 9 (retrieval), 11 (corroboration) are now REAL** (were

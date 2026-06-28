@@ -26,7 +26,7 @@ that decoupling is the core idea.
 - Module 13 User Belief Graph ✅ (7 author beliefs in data/user_beliefs.json)
 - Module 14 Narrative Planner ✅ (gemma4 over belief state + user beliefs; voice in settings.author_voice)
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
-- **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 68 tests pass.
+- **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 70 tests pass.
 
 ## Part B — within-run multi-source convergence ✅ (Modules 8/9/11 real)
 The gap→retrieval→corroboration chain so a single run can pull in related external evidence:
