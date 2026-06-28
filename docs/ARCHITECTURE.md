@@ -107,17 +107,30 @@ on re-run ⇒ belief ids fixed ⇒ deterministic evolution. `bgis run --fresh` b
 ```
 type_weight       = { fact: 1.0, finding: finding_weight=1.0, opinion: 0.0 }   # opinions excluded
 effective_conf(c) = c.confidence * type_weight[c.type]
-authority         = clamp( log10(stars + 10) / 4 , 0..1 )
+authority         = clamp( log10(stars + 10) / 4 , 0..1 )                       # repos (stars signal)
+                  = source_type_authority[type]                                 # non-repo, no stars
 base              = mean(effective_conf over fact+finding) * (0.5 + 0.5*authority) * ceiling=0.85
-corroboration     = min( external_corroboration_cap=0.15 , 0.05 * n_external )
+# Gate F — reserved headroom (1 - ceiling = 0.15) filled by a COMPOSITE bonus, summed then capped:
+external_bonus    = min( external_corroboration_cap=0.15 , 0.05 * n_external )
+diversity_bonus   = source_diversity_weight=0.05 * (n_distinct_source_TYPES - 1)
+recency_bonus     = recency_weight=0.05 * recency_term(days_since_push)         # 0..1, 0 if absent
+corroboration     = min( headroom=0.15 , external_bonus + diversity_bonus + recency_bonus )
 evidence_strength = clamp( base + corroboration )
 cold start (no prior belief): new = evidence_strength, old = 0
 existing belief:              new = old + 0.3 * (evidence_strength - old)
 delta = new - old   (all clamped to [0,1])
 ```
-> Claims alone cap a belief at the 0.85 ceiling; the reserved 0.15 headroom is filled only by
-> independent external corroboration (so reaching ~1.0 requires multiple sources). Validated:
-> n_external 0→0.85, 1→0.90, 7→1.00.
+> Claims alone cap a belief at the 0.85 ceiling; the reserved 0.15 headroom is filled by a composite
+> of **external** corroboration (m09 siblings), **source-TYPE diversity** (repo-fact + paper-finding
+> + discourse agreeing), and **recency**, so reaching ~1.0 requires either many sources or
+> cross-TYPE agreement. external-only validated: n_external 0→0.85, 1→0.90, 7→1.00.
+
+> **Source-TYPE weighting (Gate F).** Non-repo sources have no `stars`, so authority comes from a
+> per-TYPE baseline: `arxiv 0.7 / rss 0.5 / hn,gh_discussions 0.4 / unknown 0.25` (== the old flat
+> fallback). A peer-reviewed paper outweighs a random no-stars comment. Source TYPE per source_id is
+> derived from `data/raw/<sid>.json` `type` (`m11.source_kind`). Diversity counts distinct TYPES in
+> the current run ∪ the belief's history — completing the thesis that cross-TYPE agreement *moves*
+> confidence, not just cross-source. Repersist after formula changes with `bgis rebuild` (§ below).
 
 **Claim typing (Gate A).** Only `fact` + `finding` claims build confidence; `opinion` claims are
 excluded and collected into `BeliefDelta.stance_points` → `Belief.stances` (Module 12 dedups, caps
@@ -134,6 +147,11 @@ HN thread or arXiv paper corroborating a repo belief can only hold or raise it.
 Every `BeliefDelta` carries a `rationale` list spelling out these inputs. Module 12 appends a
 `BeliefHistoryEntry{ts, conf_before, conf_after, delta, source_id, supporting, contradicting}` —
 so any belief traces back to the sources that shaped it. Trend: new / accelerating / declining / stable.
+
+**Graph rebuild (`bgis rebuild` → `pipeline.rebuild_graph`).** After a formula change, repersist the
+whole graph without re-ingesting: wipe `data/beliefs/bel_*.json`, then replay every persisted
+`*_evidence.json` (in mtime = original ingest order) through the current Module 11 + 12. Deterministic,
+no network. Used to repersist confidences computed under an older formula (e.g. pre-ratchet erosion).
 
 ---
 
@@ -176,3 +194,7 @@ artifacts, not beliefs.
 - File/Chroma backing now; swap to Neo4j (`BeliefStore` iface) + Qdrant (`VectorStore` iface) later
   without touching the belief engine.
 - Stubs (8/9/10-external/13) keep full contracts so future work is drop-in.
+- Belief confidence (Gate F): claims-only caps at 0.85; the reserved 0.15 headroom is a *composite*
+  of external + source-TYPE-diversity + recency, so cross-TYPE agreement (repo+paper+discourse) moves
+  confidence. Source TYPE derived from `data/raw/<sid>.json`, not stored on the belief. Ratchet keeps
+  supporting evidence monotone; only contradiction lowers. Repersist via `bgis rebuild`.

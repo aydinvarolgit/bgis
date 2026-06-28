@@ -204,6 +204,35 @@ def run_content(plan: NarrativePlan, ctx: Context) -> GeneratedContent:
     return content
 
 
+def rebuild_graph(ctx: Context) -> tuple[list[str], int]:
+    """One-time graph rebuild: wipe the belief store and chronologically replay every source's
+    persisted evidence packets through the CURRENT m11 (Gate F formula + corroboration ratchet) +
+    m12. This repersists confidences that were computed under an older formula (e.g. beliefs stuck
+    low before the ratchet fix) without re-ingesting any source or hitting the network.
+
+    Sources are replayed in evidence-artifact mtime order (their original ingest order) so beliefs
+    evolve exactly as they did, but under today's math. Returns (replayed_source_ids, belief_count).
+    """
+    beliefs_dir = ctx.settings.stage_dir("beliefs")
+    # Wipe only the belief store (bel_*.json); pipeline artifacts (*_evidence.json, ...) stay.
+    for p in beliefs_dir.glob("bel_*.json"):
+        p.unlink()
+
+    suffix = "_evidence.json"
+    ev_files = sorted(beliefs_dir.glob(f"*{suffix}"), key=lambda p: p.stat().st_mtime)
+    replayed: list[str] = []
+    for p in ev_files:
+        source_id = p.name[: -len(suffix)]
+        packets = load_evidence(ctx, source_id)
+        # Pass the current (rebuilding) store as RelatedBeliefs; m11 indexes priors by belief_id.
+        related = RelatedBeliefs(source_id=source_id, beliefs=ctx.beliefs.all())
+        deltas = m11_delta.run(packets, related, ctx)
+        m12_belief_graph.run(deltas, ctx)
+        replayed.append(source_id)
+
+    return replayed, len(ctx.beliefs.all())
+
+
 def load_evidence(ctx: Context, source_id: str) -> EvidencePackets:
     return load_artifact(ctx.settings, "beliefs", f"{source_id}_evidence", EvidencePackets)
 

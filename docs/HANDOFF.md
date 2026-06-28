@@ -70,6 +70,7 @@ bgis run "rss:all"                               # curated feeds (settings.rss_f
 bgis run <ref> --fresh                           # ignore cached claims/concepts, re-extract
 bgis run-module <name> --source-id <id>          # single module from persisted input
 bgis run-module discovery --url <url>            # discovery needs --url
+bgis rebuild                                     # wipe + replay belief graph through current m11 math (Gate F)
 bgis graph                                       # read the belief graph (consensus/trends/momentum/pillars/fringe)
 bgis graph --view consensus --limit 20           # one lens
 bgis graph --belief bel_xxxxxxxx                 # evidence trail (provenance) for one belief
@@ -114,10 +115,9 @@ if you change vector-space or thresholds.
    corroboration (intended). Re-run / rebuild the graph to repersist confidences on the new scale.
 7. **m09 hits the live GitHub API** (search + get_repo) on every run — slower than the rest of the
    pipeline and counts against the rate limit. `gh` is injectable; tests use a fake.
-8. ~~Corroboration could LOWER a belief~~ **FIXED** (ratchet): a low-authority supporting source
-   (no stars→authority 0.25) no longer drags an established belief down — supporting evidence holds
-   or raises, only contradiction lowers. Confidences persisted *before* this fix (e.g. bel_05e54570
-   at 0.68) stay wrong until a graph rebuild repersists them.
+8. ~~Corroboration could LOWER a belief~~ **FIXED** (ratchet) + **rebuilt** (Gate F): supporting
+   evidence holds or raises, only contradiction lowers. The graph was rebuilt (`bgis rebuild`) so
+   pre-fix confidences are repersisted — bel_05e54570 is now 0.92 stable (was 0.64 declining).
 9. **Non-GitHub sources have no `repo`** → Module 9 (sibling retrieval) is skipped for them and they
    emit no `stars` signal (authority falls back to the 0.25 baseline). By design.
 
@@ -137,7 +137,14 @@ Ordered by value:
 6. **Storage migration** — `BeliefStore` → Neo4j, `VectorStore` → Qdrant, behind current interfaces.
 7. **Contradiction handling** — Module 11 currently records contradicting claim ids; make
    contradictions spawn competing beliefs rather than just dampening.
-8. **Richer delta** — add recency / source-diversity / agreement weighting to evidence_strength.
+8. ~~**Richer delta**~~ ✅ **done (Gate F)** — evidence_strength's reserved headroom is now a
+   COMPOSITE bonus: `min(headroom, external + diversity + recency)`. diversity = `0.05 *
+   (n_distinct_source_TYPES - 1)` so repo-fact + paper-finding + discourse agreeing MOVES
+   confidence; recency = `0.05 * term(days_since_push)`; non-repo sources get a per-TYPE authority
+   baseline (arxiv 0.7 / rss 0.5 / hn,ghd 0.4 / unknown 0.25) instead of the flat 0.25. Source TYPE
+   per source_id derived from `data/raw/<sid>.json`. Composes with ceiling/ratchet/pure-opinion.
+   **Graph rebuilt** via `bgis rebuild` (wipe + chronological evidence-packet replay, no re-ingest):
+   bel_05e54570 0.64 declining → 0.92 stable; no `declining` beliefs remain.
 
 ---
 

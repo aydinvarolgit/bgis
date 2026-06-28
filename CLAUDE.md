@@ -28,6 +28,26 @@ that decoupling is the core idea.
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
 - **MVP COMPLETE + Part B in progress** — full `bgis run <url>` end-to-end. 70 tests pass.
 
+## Gate F — richer belief delta ✅ (103 tests)
+Completes the Part B-2 thesis: cross-source-TYPE agreement MOVES confidence. m11 evidence_strength's
+reserved headroom (1 - ceiling = 0.15) is now a COMPOSITE bonus, summed then capped at headroom:
+`corroboration = min(0.15, external + diversity + recency)`.
+- **diversity** = `source_diversity_weight(0.05) * (n_distinct_source_TYPES - 1)`. Types = current
+  run's type ∪ types of every source_id in the belief's history. So repo-fact + paper-finding +
+  discourse agreeing lifts a belief past what one source type could.
+- **source-TYPE authority** (m11 `_authority`): repos still use log10(stars); non-repo sources (no
+  `stars` signal) use `source_type_authority` baseline — arxiv 0.7 / rss 0.5 / hn,gh_discussions
+  0.4 / unknown 0.25 (== old flat fallback, so legacy behavior unchanged).
+- **recency** = `recency_weight(0.05) * term(days_since_push)`; full ≤30d, linear→0 at 365d, absent→0
+  (neutral, never a penalty — respects ratchet). Only github emits the signal today.
+- Source TYPE per source_id derived from `data/raw/<sid>.json` `type` (m11.source_kind helper).
+- Existing external corroboration term unchanged → all prior m11 tests pass. Composes with ceiling,
+  ratchet, pure-opinion 0.3.
+- **Graph rebuild** `bgis rebuild` (pipeline.rebuild_graph): wipe bel_*.json + chronologically
+  replay every `*_evidence.json` through current m11+m12 (no re-ingest, no network). Validated live:
+  bel_05e54570 (spans github+hn+arxiv) 0.64 declining → 0.92 stable; 0 declining beliefs remain;
+  cross-type belief shows diversity 0.100 → strength 0.674→0.786 in rationale.
+
 ## Part B-2 — opinionated multi-source ingestion ✅ (Gates A–E shipped; 94 tests)
 Goal: expert, stance-taking posts by ingesting OPINIONATED sources beyond GitHub. Plan:
 `docs/PLAN_PART_B2_SOURCES.md`. Decisions settled: A1=pure-opinion→low-conf 0.3+stances;

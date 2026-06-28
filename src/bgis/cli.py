@@ -274,6 +274,26 @@ def run_module(
 
 
 @app.command()
+def rebuild(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+):
+    """Wipe and replay the belief graph through the current belief math (Gate F).
+
+    Recomputes every belief from its persisted evidence packets — no re-ingest, no network. Use
+    after changing the m11 formula to repersist confidences (e.g. beliefs stuck low before a fix).
+    """
+    ctx = Context()
+    n_before = len(ctx.beliefs.all())
+    if not yes:
+        typer.confirm(
+            f"Rebuild will wipe and replay {n_before} beliefs from persisted evidence. Continue?",
+            abort=True,
+        )
+    replayed, n_after = pipeline.rebuild_graph(ctx)
+    rprint(f"[green]rebuilt[/green] {n_after} beliefs from {len(replayed)} replayed sources")
+
+
+@app.command()
 def graph(
     view: str = typer.Option(
         "summary", help="summary | consensus | trends | momentum | pillars | fringe"

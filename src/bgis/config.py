@@ -66,6 +66,33 @@ class Settings(BaseSettings):
     external_corroboration_weight: float = 0.05
     external_corroboration_cap: float = 0.15
 
+    # Gate F — richer delta. The reserved headroom (1 - base_confidence_ceiling) is filled by a
+    # COMPOSITE of three corroboration signals, summed then capped at the headroom so claims alone
+    # still top out at the ceiling and full corroboration reaches 1.0:
+    #   external   — independent m09 sibling repos (weight/cap above)
+    #   diversity  — distinct SOURCE TYPES (repo fact + paper finding + discourse) backing the belief
+    #   recency    — how fresh the evidence is (from the days_since_push signal)
+    # This completes the Part B-2 thesis: cross-source-TYPE agreement MOVES confidence, not just
+    # cross-source. Each extra distinct source type adds this much (3 types -> 0.10):
+    source_diversity_weight: float = 0.05
+    # Per-source-TYPE authority baseline, used when a source emits no `stars` signal (non-repo
+    # sources). Repos keep the log10(stars) formula. unknown -> 0.25 (== the old flat fallback, so
+    # existing behavior is unchanged). A peer-reviewed paper outweighs a random comment.
+    source_type_authority: dict[str, float] = Field(
+        default_factory=lambda: {
+            "github": 0.4,  # fallback only; repos normally use the stars formula
+            "arxiv": 0.7,
+            "rss": 0.5,
+            "hn": 0.4,
+            "gh_discussions": 0.4,
+        }
+    )
+    # Recency: evidence pushed within recency_full_days counts full; decays linearly to 0 at
+    # recency_zero_days; older or absent -> 0 (never a penalty — respects the ratchet).
+    recency_weight: float = 0.05
+    recency_full_days: float = 30.0
+    recency_zero_days: float = 365.0
+
     # Claim-type weighting (m11). Facts and findings build a belief's confidence; opinions are
     # excluded (weight 0) and collected as stances instead. finding_weight 1.0 = papers count the
     # same as repo facts; bump >1 to make empirical findings outweigh repo self-description.

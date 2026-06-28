@@ -1,9 +1,12 @@
+import json
 import math
+from datetime import datetime, timezone
 
 import pytest
 
 from bgis.models import (
     Belief,
+    BeliefHistoryEntry,
     Claim,
     EvidencePacket,
     EvidencePackets,
@@ -12,6 +15,12 @@ from bgis.models import (
     Signal,
 )
 from bgis.modules import m11_delta
+
+
+def _write_source(settings, sid, type_):
+    """Persist a discovery artifact so m11 can derive the source TYPE for sid."""
+    p = settings.stage_dir("raw") / f"{sid}.json"
+    p.write_text(json.dumps({"source_id": sid, "type": type_, "url": "x", "status": "ingested"}))
 
 
 def _external(n):
@@ -219,3 +228,96 @@ def test_pure_opinion_does_not_move_existing_belief(ctx):
     assert d.new_conf == 0.88  # unchanged — opinions never move confidence
     assert d.delta == 0.0
     assert d.stance_points == ["but is it sustainable?"]
+
+
+# --- Gate F: richer delta (recency + source diversity + source-TYPE weighting) ------------ #
+
+def test_non_repo_source_uses_type_authority_baseline(ctx):
+    # An arXiv source has no `stars` signal -> authority comes from the per-TYPE baseline (0.7),
+    # not the old flat 0.25. A paper now outweighs a random no-stars source.
+    _write_source(ctx.settings, "src_arx", "arxiv")
+    claims = [Claim(id="c1", text="empirical result", confidence=0.8, type="finding")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims, signals=[])
+    out = m11_delta.run(EvidencePackets(source_id="src_arx", packets=[pkt]),
+                        RelatedBeliefs(source_id="src_arx"), ctx)
+    expected = 0.8 * (0.5 + 0.5 * 0.7) * 0.85  # authority 0.7, no diversity/recency/external
+    assert out.deltas[0].evidence_strength == pytest.approx(expected, abs=1e-5)
+
+
+def test_unknown_source_type_keeps_old_flat_authority(ctx):
+    # No raw artifact for the source id -> type unknown -> 0.25 baseline (== legacy behavior).
+    claims = [Claim(id="c1", text="x", confidence=0.8, type="finding")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims, signals=[])
+    out = m11_delta.run(EvidencePackets(source_id="src_unknown", packets=[pkt]),
+                        RelatedBeliefs(source_id="src_unknown"), ctx)
+    expected = 0.8 * (0.5 + 0.5 * 0.25) * 0.85
+    assert out.deltas[0].evidence_strength == pytest.approx(expected, abs=1e-5)
+
+
+def test_recency_bonus_from_fresh_push(ctx):
+    _write_source(ctx.settings, "src_gh", "github")
+    claims = [Claim(id="c1", text="x", confidence=0.8, type="fact")]
+    pkt = EvidencePacket(
+        concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+        signals=[Signal(name="stars", value=1200, source_field="stars"),
+                 Signal(name="days_since_push", value=10, source_field="pushed_at")],
+    )
+    out = m11_delta.run(EvidencePackets(source_id="src_gh", packets=[pkt]),
+                        RelatedBeliefs(source_id="src_gh"), ctx)
+    base, _ = _expected_strength(mean=0.8)  # stars 1200
+    # days_since_push 10 <= recency_full_days 30 -> term 1.0 -> +recency_weight 0.05
+    assert out.deltas[0].evidence_strength == pytest.approx(base + 0.05, abs=1e-5)
+
+
+def test_recency_decays_linearly(ctx):
+    _write_source(ctx.settings, "src_gh", "github")
+    claims = [Claim(id="c1", text="x", confidence=0.8, type="fact")]
+    midpoint = (30.0 + 365.0) / 2  # term = 0.5
+    pkt = EvidencePacket(
+        concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+        signals=[Signal(name="stars", value=1200, source_field="stars"),
+                 Signal(name="days_since_push", value=midpoint, source_field="pushed_at")],
+    )
+    out = m11_delta.run(EvidencePackets(source_id="src_gh", packets=[pkt]),
+                        RelatedBeliefs(source_id="src_gh"), ctx)
+    base, _ = _expected_strength(mean=0.8)
+    assert out.deltas[0].evidence_strength == pytest.approx(base + 0.05 * 0.5, abs=1e-5)
+
+
+def test_cross_source_type_diversity_raises_belief(ctx):
+    # The Part B-2 thesis: a belief first built from a GitHub repo, now corroborated by an arXiv
+    # paper, gains a diversity bonus (2 distinct source TYPES) that MOVES confidence up — beyond
+    # what the single low-authority paper's claims alone would have reached.
+    _write_source(ctx.settings, "src_gh", "github")
+    _write_source(ctx.settings, "src_arx", "arxiv")
+    prior = Belief(
+        id="bel_ab12cd34", statement="s", confidence=0.6, linked_concepts=["concept_ab12cd34"],
+        history=[BeliefHistoryEntry(ts=datetime.now(timezone.utc), conf_before=0.0,
+                                    conf_after=0.6, delta=0.6, source_id="src_gh")],
+    )
+    related = RelatedBeliefs(source_id="src_arx", beliefs=[prior])
+    claims = [Claim(id="c1", text="agrees", confidence=0.8, type="finding")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims, signals=[])
+    out = m11_delta.run(EvidencePackets(source_id="src_arx", packets=[pkt]), related, ctx)
+    d = out.deltas[0]
+    base = 0.8 * (0.5 + 0.5 * 0.7) * 0.85  # arxiv authority 0.7
+    assert d.evidence_strength == pytest.approx(base + 0.05, abs=1e-5)  # +diversity (2 types)
+    assert d.new_conf > 0.6  # moved up
+    assert any("2 source type(s)" in r for r in d.rationale)
+
+
+def test_single_source_type_gives_no_diversity_bonus(ctx):
+    # Same GitHub type on both prior history and current run -> 1 distinct type -> no bonus.
+    _write_source(ctx.settings, "src_gh", "github")
+    _write_source(ctx.settings, "src_gh2", "github")
+    prior = Belief(
+        id="bel_ab12cd34", statement="s", confidence=0.5, linked_concepts=["concept_ab12cd34"],
+        history=[BeliefHistoryEntry(ts=datetime.now(timezone.utc), conf_before=0.0,
+                                    conf_after=0.5, delta=0.5, source_id="src_gh")],
+    )
+    related = RelatedBeliefs(source_id="src_gh2", beliefs=[prior])
+    pkts = _packets()  # has stars signal
+    pkts.source_id = "src_gh2"
+    out = m11_delta.run(pkts, related, ctx)
+    base, _ = _expected_strength()
+    assert out.deltas[0].evidence_strength == pytest.approx(base, abs=1e-5)  # no diversity bonus
