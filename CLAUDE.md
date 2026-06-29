@@ -35,6 +35,10 @@ that decoupling is the core idea.
 worldview BEFORE the first post-generating run. One ref/line (blanks + `#` comments skipped);
 ingested in order through the **full pipeline m01→m12** (gap + retrieval ON so seeds
 cross-corroborate as they load) — **no m13/m14/m15, no post per ref**.
+- **Bulk-seed hint**: open-web DuckDuckGo search is ON by default and fires per ref, so a big
+  manifest = many live queries (slow, DDG rate-limit risk). Seed with
+  `BGIS_RETRIEVAL_USE_WEB_SEARCH=false` for large batches — the seeded refs still cross-corroborate
+  each other within the run; only the open-web lookups are skipped.
 - **`Belief.origin: Literal["source","seed"]="source"`** (models.py): default keeps every
   pre-existing `bel_*.json` back-compatible. Stamped only at m12 **create**; **permanent** — real
   sources later move confidence but `origin` is never cleared (and a seed run touching a pre-existing

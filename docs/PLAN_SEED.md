@@ -99,6 +99,9 @@ bgis seed seeds.txt
   3. `add_seed_source(ctx, source_id)` so the tag predicate holds for this and rebuild.
 - Print a per-ref summary line (created/updated counts) + final graph size.
 - `--fresh` passthrough like `run` (bypass cache) is optional; default reuse cache.
+- Open-web search (DuckDuckGo) is ON by default and runs per ref → a large manifest = many live
+  queries. For bulk seeding, prefix `BGIS_RETRIEVAL_USE_WEB_SEARCH=false` to skip the open-web
+  lookups (the seeded refs still cross-corroborate each other within the run).
 
 `pipeline.seed_one(ref, ctx)`:
 

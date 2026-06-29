@@ -79,6 +79,10 @@ SEED_HELP = (
     "Each non-comment line is a REF using the SAME grammar as `bgis run` (below). Refs ingest in "
     "order through m01->m12 so they cross-corroborate. Created beliefs are marked `origin=\"seed\"`: "
     "permanent provenance; m14 never leads a post on them (corroboration substrate only).\n\n"
+    "TIP: open-web search (DuckDuckGo) is ON by default and fires per ref, so a large manifest makes "
+    "many live queries (slower, DDG rate-limit risk). For bulk seeding run with "
+    "`BGIS_RETRIEVAL_USE_WEB_SEARCH=false` — within-run cross-corroboration between the seeded refs "
+    "still works; you only drop the open-web lookups.\n\n"
     + REF_SCHEMES
 )
 

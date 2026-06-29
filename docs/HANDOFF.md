@@ -87,6 +87,9 @@ bgis rebuild                                     # wipe + replay belief graph th
 bgis seed seeds.txt                              # cold-start: bulk-ingest a manifest of refs (m01→m12, NO post);
                                                  #   created beliefs get permanent origin="seed" (never lead a post,
                                                  #   corroboration substrate only). Registry: data/seed_sources.json.
+BGIS_RETRIEVAL_USE_WEB_SEARCH=false bgis seed seeds.txt   # bulk seed WITHOUT per-ref DuckDuckGo lookups
+                                                 #   (web search is ON by default; disable it to avoid DDG rate limits
+                                                 #   on large manifests — seeded refs still cross-corroborate each other).
 bgis graph                                       # read the belief graph (consensus/trends/momentum/pillars/fringe)
 bgis graph --view consensus --limit 20           # one lens
 bgis graph --belief bel_xxxxxxxx                 # evidence trail (provenance) for one belief
