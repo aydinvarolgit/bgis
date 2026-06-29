@@ -11,7 +11,7 @@
     "max_prompt_chars": 40000,
     "options": { "temperature": 0, "num_ctx": 32768 },
     "backends": [
-      { "name": "local", "host": "http://localhost:11434", "model": "gemma4:31b-cloud" },
+      { "name": "local", "host": "http://localhost:11434", "model": "gemma4:12b-mlx" },
       { "name": "local-fallback", "host": "http://localhost:11434", "model": "gemma4:latest" }
     ]
   },

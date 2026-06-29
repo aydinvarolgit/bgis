@@ -210,6 +210,25 @@ class Settings(BaseSettings):
     # (or `bgis run --fresh`) to force re-extraction.
     use_cache: bool = True
 
+    # Storage backends. Default = the embedded, zero-config file/Chroma stack (no server needed).
+    # Flip to a graph DB / vector DB by changing these + setting the connection fields below; the
+    # BeliefStore and VectorStore interfaces are identical across backends (see make_* factories).
+    #   belief_backend: "file"   (data/beliefs/*.json) | "neo4j"  (Belief nodes + ABOUT/COUNTERS rels)
+    #   vector_backend: "chroma" (data/chroma)         | "qdrant" (remote/embedded vector DB)
+    belief_backend: str = "file"
+    vector_backend: str = "chroma"
+    # Qdrant connection (vector_backend="qdrant"). Embeddings stay nomic-embed-text; only the
+    # vector index moves. Collection vector size is inferred from the first embedding added.
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""
+    qdrant_prefer_grpc: bool = False
+    # Neo4j connection (belief_backend="neo4j"). Full Belief JSON is stored on each node for
+    # lossless round-trip; key fields are also indexed as props + relationships for graph queries.
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    neo4j_database: str = "neo4j"
+
     def stage_dir(self, stage: str) -> Path:
         """Return (creating if needed) the directory for a pipeline stage."""
         if stage not in STAGE_DIRS:

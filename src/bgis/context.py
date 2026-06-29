@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .belief_store import BeliefStore
+from .belief_store import make_belief_store
 from .config import Settings, load_settings
 from .embeddings import Embedder
 from .llm import LLM
-from .vectorstore import VectorStore
+from .vectorstore import make_vector_store
 
 
 @dataclass
@@ -20,8 +20,8 @@ class Context:
     settings: Settings = field(default_factory=load_settings)
     llm: LLM = None  # type: ignore[assignment]
     embedder: Embedder = None  # type: ignore[assignment]
-    vectors: VectorStore = None  # type: ignore[assignment]
-    beliefs: BeliefStore = None  # type: ignore[assignment]
+    vectors: object = None  # VectorStore | QdrantVectorStore (per settings.vector_backend)
+    beliefs: object = None  # BeliefStore | Neo4jBeliefStore (per settings.belief_backend)
 
     def __post_init__(self):
         if self.llm is None:
@@ -29,6 +29,6 @@ class Context:
         if self.embedder is None:
             self.embedder = Embedder(self.settings)
         if self.vectors is None:
-            self.vectors = VectorStore(self.settings)
+            self.vectors = make_vector_store(self.settings)
         if self.beliefs is None:
-            self.beliefs = BeliefStore(self.settings, self.vectors, self.embedder)
+            self.beliefs = make_belief_store(self.settings, self.vectors, self.embedder)
