@@ -138,6 +138,53 @@ def test_stance_lines_empty_when_no_stances():
     assert "no opinion stances" in m14_narrative._stance_lines(_update())
 
 
+def test_debate_lines_surface_contradiction():
+    # (#7) A disputed belief + its competing counter belief render as a CONTESTED line.
+    now = datetime.now(timezone.utc)
+    h = BeliefHistoryEntry(ts=now, conf_before=0.0, conf_after=0.8, delta=0.8, source_id="s")
+    upd = BeliefGraphUpdate(
+        source_id="src_test",
+        beliefs=[
+            Belief(id="bel_1", statement="X scales well", confidence=0.8,
+                   linked_concepts=["concept_1"], disputed_by=["bel_1__c"], history=[h]),
+            Belief(id="bel_1__c", statement="X does not scale", confidence=0.4,
+                   linked_concepts=["concept_1"], counter_to="bel_1", history=[h]),
+        ],
+    )
+    lines = m14_narrative._debate_lines(upd)
+    assert "CONTESTED" in lines
+    assert "X scales well" in lines and "X does not scale" in lines
+    assert "0.80" in lines and "0.40" in lines
+
+
+def test_debate_block_reaches_prompt(ctx):
+    now = datetime.now(timezone.utc)
+    h = BeliefHistoryEntry(ts=now, conf_before=0.0, conf_after=0.8, delta=0.8, source_id="s")
+    upd = BeliefGraphUpdate(
+        source_id="src_test", created_belief_ids=["bel_1"],
+        beliefs=[
+            Belief(id="bel_1", statement="X scales well", confidence=0.8,
+                   linked_concepts=["concept_1"], disputed_by=["bel_1__c"], history=[h]),
+            Belief(id="bel_1__c", statement="X does not scale", confidence=0.4,
+                   linked_concepts=["concept_1"], counter_to="bel_1", history=[h]),
+        ],
+    )
+    captured = {}
+
+    def capturing(system, user, schema, **kw):
+        captured["user"] = user
+        return _NarrativeDraft(main_belief="X", confidence=0.5)
+
+    ctx.llm.structured = capturing
+    m14_narrative.run(upd, _user(), _packets(), ctx)
+    assert "OPEN CONTRADICTIONS" in captured["user"]
+    assert "X does not scale" in captured["user"]
+
+
+def test_debate_lines_empty_when_no_disputes():
+    assert "no open contradictions" in m14_narrative._debate_lines(_update())
+
+
 def test_handles_empty_worldview(ctx):
     ctx.llm.structured_responses["_NarrativeDraft"] = _NarrativeDraft(
         main_belief="From user beliefs only", confidence=0.5

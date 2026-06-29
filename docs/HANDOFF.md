@@ -155,10 +155,12 @@ Ordered by value:
    embedded + gated at `retrieval_match_threshold`, dedup by url, capped `retrieval_max_per_concept`.
    Pipeline now always calls m09 (repo optional). Live: web article `src_df63a983` went 0 → 8
    external items (1 corpus + 3 wikipedia + 4 crossref), correctly concept-routed.
-   **DEFERRED (user undecided 2026-06-28):** a general open-web `SearchBackend` — DuckDuckGo (keyless
-   `ddgs` lib) or self-hosted SearXNG meta-search — drops in as one more `RetrievalBackend`, same
-   `candidates()` contract. Not built; seam ready. Bing is NOT an option (MS retired the Bing Search
-   APIs ~Aug 2025). Also still open: dependency-file candidates in the GitHub path.
+   **Open-web `SearchBackend`** ✅ **done** — `WebSearchBackend` (`src/bgis/retrieval/web_search.py`):
+   DuckDuckGo via the keyless `ddgs` lib, per-concept text search, opt-in `retrieval_use_web_search`
+   (default OFF). Injectable `search(query,n)->[{title,href,body}]` → offline tests; fail-soft per
+   query; routed + threshold-gated by m09 like every backend. Inject a SearXNG-backed `search` for
+   self-hosted meta-search (same contract). Bing was NOT an option (MS retired the Bing Search APIs
+   ~Aug 2025). Still open: dependency-file candidates in the GitHub path.
 4. ~~Source plugins~~ ✅ done (Part B-2): HN/arXiv/GH-Discussions/RSS behind `SourcePlugin`.
    ~~web-article plugin~~ ✅ **done (Gate G)**: `WebArticleSourcePlugin` — `url:<u>` or bare http(s)
    URL → `trafilatura` main-content extract → one `article` doc (type `web`, authority baseline 0.5,
@@ -167,8 +169,15 @@ Ordered by value:
    Optional follow-on still open: PDF plugin.
 5. **More media** — blog/report/newsletter `ContentGenerator`s (m15 interface ready).
 6. **Storage migration** — `BeliefStore` → Neo4j, `VectorStore` → Qdrant, behind current interfaces.
-7. **Contradiction handling** — Module 11 currently records contradicting claim ids; make
-   contradictions spawn competing beliefs rather than just dampening.
+7. ~~**Contradiction handling**~~ ✅ **done** — m11 no longer just dampens. A source's contradicting
+   (negative-polarity fact/finding) claims against an EXISTING belief now spawn a COMPETING belief
+   `bel_<h>__c` (`Belief.counter_to` → primary; primary's `disputed_by` ← counter, wired in m12). The
+   counter accrues its own confidence from the contradicting evidence (`_support_delta`, no
+   external/diversity/recency bonus); the primary HOLDS (ratchet) instead of being dragged down — the
+   disagreement is represented structurally, not averaged. m12 applies primaries before counters so
+   the back-link survives a same-run primary save. m14 gets an OPEN CONTRADICTIONS block (`_debate_lines`)
+   pairing each disputed belief with its counter + both confidences, and is told to take a reasoned
+   side. Cold start (no prior belief) keeps negatives in the belief's own negative statement.
 8. ~~**Richer delta**~~ ✅ **done (Gate F)** — evidence_strength's reserved headroom is now a
    COMPOSITE bonus: `min(headroom, external + diversity + recency)`. diversity = `0.05 *
    (n_distinct_source_TYPES - 1)` so repo-fact + paper-finding + discourse agreeing MOVES

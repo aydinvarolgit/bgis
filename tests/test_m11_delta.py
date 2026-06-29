@@ -204,17 +204,65 @@ def test_stronger_supporting_source_still_raises(ctx):
     assert d.new_conf > 0.5
 
 
-def test_contradiction_can_still_lower_belief(ctx):
-    # A contradicting (negative-polarity) source IS allowed to move confidence down.
+def test_contradiction_spawns_competing_belief(ctx):
+    # (#7) A contradicting (negative-polarity) source against an EXISTING belief no longer dampens
+    # it — it spawns a separate COMPETING belief built from the contradicting claim.
     prior = Belief(id="bel_ab12cd34", statement="s", confidence=0.9,
                    linked_concepts=["concept_ab12cd34"])
     related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
-    claims = [Claim(id="c1", text="fails", confidence=0.3, type="fact", polarity="negative")]
+    claims = [Claim(id="c1", text="it fails to scale", confidence=0.6, type="fact",
+                    polarity="negative")]
     pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
                          signals=[Signal(name="stars", value=10, source_field="stars")])
     out = m11_delta.run(EvidencePackets(source_id="src_test", packets=[pkt]), related, ctx)
+
+    # The primary belief gets no delta (held; not dragged down); only the competing belief is emitted.
+    counter = next(d for d in out.deltas if d.counter_to)
+    assert counter.belief_id == "bel_ab12cd34__c"
+    assert counter.counter_to == "bel_ab12cd34"
+    assert counter.supporting == ["c1"]  # the contradicting claim SUPPORTS the counter position
+    assert counter.contradicting == []
+    assert counter.statement == "it fails to scale"
+    assert counter.new_conf > 0  # accrues its own confidence from the contradicting evidence
+    assert all(d.belief_id != "bel_ab12cd34" for d in out.deltas)  # primary untouched
+
+
+def test_contradiction_with_support_holds_primary_and_spawns_counter(ctx):
+    # Same run brings a supporting fact AND a contradicting fact: primary updates from the support
+    # (ratcheted), the contradiction goes to a competing belief — not averaged into one number.
+    prior = Belief(id="bel_ab12cd34", statement="s", confidence=0.5,
+                   linked_concepts=["concept_ab12cd34"])
+    related = RelatedBeliefs(source_id="src_test", beliefs=[prior])
+    claims = [
+        Claim(id="c1", text="works well", confidence=0.9, type="fact", polarity="positive"),
+        Claim(id="c2", text="but it fails to scale", confidence=0.7, type="fact",
+              polarity="negative"),
+    ]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+                         signals=[Signal(name="stars", value=1200, source_field="stars")])
+    out = m11_delta.run(EvidencePackets(source_id="src_test", packets=[pkt]), related, ctx)
+
+    primary = next(d for d in out.deltas if d.belief_id == "bel_ab12cd34")
+    counter = next(d for d in out.deltas if d.counter_to)
+    assert primary.supporting == ["c1"]
+    assert primary.contradicting == []  # the negative claim was diverted to the counter
+    assert primary.new_conf > 0.5  # built from the support only
+    assert counter.supporting == ["c2"]
+    assert any("competing belief" in r for r in primary.rationale)
+
+
+def test_cold_start_negative_claim_stays_in_primary(ctx):
+    # (#7) No prior belief -> nothing to compete with -> negative claim just forms the belief.
+    claims = [Claim(id="c1", text="it does not scale", confidence=0.8, type="fact",
+                    polarity="negative")]
+    pkt = EvidencePacket(concept_id="concept_ab12cd34", concept_name="c", claims=claims,
+                         signals=[Signal(name="stars", value=1200, source_field="stars")])
+    out = m11_delta.run(EvidencePackets(source_id="src_test", packets=[pkt]),
+                        RelatedBeliefs(source_id="src_test"), ctx)
+    assert len(out.deltas) == 1
     d = out.deltas[0]
-    assert d.new_conf < 0.9  # contradiction lowers
+    assert d.belief_id == "bel_ab12cd34"  # no counter belief on cold start
+    assert d.counter_to is None
     assert d.contradicting == ["c1"]
 
 

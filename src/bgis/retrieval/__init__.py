@@ -11,10 +11,9 @@ behavior is unchanged):
                           disk. Zero network, deterministic, cross-run convergence.
     ExternalApiBackend   (retrieval_use_external_apis)  — keyless Wikipedia + Semantic Scholar +
                           Crossref lookups per concept.
-
-DEFERRED (user undecided, 2026-06-28): a general open-web `SearchBackend` — DuckDuckGo (via the
-keyless `ddgs` library) or a self-hosted SearXNG meta-search — would drop in here as one more
-RetrievalBackend with the same `candidates()` contract. Not implemented yet; the seam is ready.
+    WebSearchBackend     (retrieval_use_web_search)     — open-web DuckDuckGo search (keyless `ddgs`
+                          lib) per concept. Bing's Search APIs were retired ~Aug 2025; inject a
+                          SearXNG-backed `search` for a self-hosted meta-search instead.
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from .base import Candidate, RetrievalBackend, best_concept, concept_rep, cos
 from .external_apis import ExternalApiBackend
 from .local_corpus import LocalCorpusBackend
 from .source_plugins import SourcePluginBackend
+from .web_search import WebSearchBackend
 
 
 def default_backends(ctx: Context) -> list[RetrievalBackend]:
@@ -35,6 +35,8 @@ def default_backends(ctx: Context) -> list[RetrievalBackend]:
         backends.append(LocalCorpusBackend())
     if ctx.settings.retrieval_use_external_apis:
         backends.append(ExternalApiBackend())
+    if ctx.settings.retrieval_use_web_search:
+        backends.append(WebSearchBackend())
     return backends
 
 
@@ -44,6 +46,7 @@ __all__ = [
     "SourcePluginBackend",
     "LocalCorpusBackend",
     "ExternalApiBackend",
+    "WebSearchBackend",
     "default_backends",
     "best_concept",
     "concept_rep",

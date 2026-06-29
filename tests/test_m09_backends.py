@@ -20,6 +20,7 @@ from bgis.retrieval import (
     ExternalApiBackend,
     LocalCorpusBackend,
     SourcePluginBackend,
+    WebSearchBackend,
     default_backends,
 )
 
@@ -145,6 +146,40 @@ def test_external_api_backend_failsoft(ctx):
     assert b.candidates(_gaps(), _concepts(), _claims(), ctx) == []
 
 
+# --- Backend 4: open-web search (DuckDuckGo) ---------------------------------------------- #
+def test_web_search_backend_routes_results_to_concept(ctx):
+    def fake_search(query, n):
+        assert "agent memory" in query
+        return [
+            {"title": "Agent memory deep dive", "href": "http://w1", "body": "<b>recall</b> systems"},
+            {"title": "Unrelated", "href": "http://w2", "body": "cooking recipes"},
+        ]
+
+    b = WebSearchBackend(search=fake_search)
+    cands = b.candidates(_gaps("research"), _concepts(), _claims(), ctx)
+    assert len(cands) == 2
+    assert all(c.concept_id == "concept_mem" for c in cands)
+    assert cands[0].source_url == "http://w1"
+    assert cands[0].summary.startswith("[web] Agent memory deep dive")
+    assert "<b>" not in cands[0].text  # html stripped
+    assert cands[0].question == "what is the research?"
+
+
+def test_web_search_backend_failsoft(ctx):
+    def boom(query, n):
+        raise RuntimeError("ddg down")
+
+    assert WebSearchBackend(search=boom).candidates(_gaps(), _concepts(), _claims(), ctx) == []
+
+
+def test_web_search_backend_caps_per_concept(ctx):
+    ctx.settings.retrieval_websearch_per_concept = 1
+    b = WebSearchBackend(search=lambda q, n: [{"title": f"r{i}", "href": f"http://w{i}", "body": "x"}
+                                              for i in range(5)])
+    cands = b.candidates(_gaps(), _concepts(), _claims(), ctx)
+    assert len(cands) == 1  # capped to per_concept
+
+
 # --- m09 integration: routing + threshold gate through a backend -------------------------- #
 def test_m09_routes_backend_candidate_to_concept(ctx):
     ctx.embedder.table = {
@@ -173,5 +208,6 @@ def test_default_backends_respects_flags(ctx):
     ctx.settings.retrieval_use_source_plugins = True
     ctx.settings.retrieval_use_local_corpus = True
     ctx.settings.retrieval_use_external_apis = True
+    ctx.settings.retrieval_use_web_search = True
     names = {b.name for b in default_backends(ctx)}
-    assert names == {"source_plugins", "local_corpus", "external_apis"}
+    assert names == {"source_plugins", "local_corpus", "external_apis", "web_search"}

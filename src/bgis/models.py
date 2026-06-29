@@ -221,6 +221,13 @@ class Belief(BaseModel):
     # and m14 NEVER leads a post on a seed belief (corroboration substrate only). Default "source"
     # keeps every pre-existing bel_*.json back-compatible.
     origin: Literal["source", "seed"] = "source"
+    # Contradiction handling (#7). A belief whose `counter_to` is set is a COMPETING belief: it
+    # asserts the OPPOSITE of belief `counter_to`, built from the contradicting (negative-polarity)
+    # claims a later source raised. The disputed primary lists its rivals in `disputed_by`. Both
+    # coexist with their own confidences (the disagreement is represented structurally, not averaged
+    # into one dampened number); m14 surfaces the open dispute. Defaults keep old bel_*.json valid.
+    counter_to: str | None = None
+    disputed_by: list[str] = Field(default_factory=list)
     history: list[BeliefHistoryEntry] = Field(default_factory=list)
 
 
@@ -310,6 +317,9 @@ class BeliefDelta(BaseModel):
     supporting: list[str] = Field(default_factory=list)
     contradicting: list[str] = Field(default_factory=list)
     stance_points: list[str] = Field(default_factory=list)  # opinion claim texts arguing the belief
+    # Set when this delta is for a COMPETING (counter) belief spawned by contradicting claims — the
+    # id of the primary belief it opposes. m12 wires the reverse link (primary.disputed_by). (#7)
+    counter_to: str | None = None
     rationale: list[str] = Field(default_factory=list)
 
 

@@ -27,9 +27,17 @@ a single source type could reach. Source TYPE per source_id is derived from data
 
 Corroboration ratchet: for an existing belief, SUPPORTING evidence never lowers confidence —
 if a weaker but still-agreeing source (e.g. low-authority discourse with no stars) yields an
-evidence_strength below the prior, the belief HOLDS rather than regressing. Only CONTRADICTION
-(negative-polarity claims) can move confidence down. This keeps cross-source agreement monotone:
-adding an arXiv paper or HN thread that corroborates a repo belief can only hold or raise it.
+evidence_strength below the prior, the belief HOLDS rather than regressing. Cross-source agreement
+is monotone: adding an arXiv paper or HN thread that corroborates a repo belief can only hold/raise.
+
+Contradiction -> competing beliefs (#7): when a source raises CONTRADICTING (negative-polarity
+fact/finding) claims against an EXISTING belief, those claims no longer just dampen it. They build a
+separate COMPETING belief `bel_<h>__c` (counter_to = the primary) whose confidence accrues from the
+contradicting evidence on its own. The primary holds (its own supporting claims, ratcheted); the two
+coexist with independent confidences so the disagreement is represented structurally instead of
+washed into one averaged number, and m14 can surface the open dispute. (On COLD START — no prior
+belief — negative claims still just form the belief's own negative statement; there is nothing yet
+to compete with.)
 
 Claim typing (Gate A): only FACT and FINDING claims build a belief's confidence; OPINION claims
 never move it. Opinions are collected as `stance_points` (their texts) so m14 can argue them. A
@@ -128,6 +136,7 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
     headroom = 1.0 - settings.base_confidence_ceiling
 
     deltas: list[BeliefDelta] = []
+    counter_deltas: list[BeliefDelta] = []  # competing beliefs spawned by contradictions (#7)
     for packet in inp.packets:
         if not packet.claims:
             continue
@@ -137,7 +146,22 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
         old_conf = prior.confidence if prior else 0.0
 
         # Only facts + findings build confidence; opinions are excluded and kept as stances.
-        confidence_claims = [c for c in packet.claims if c.type != "opinion"]
+        nonopinion = [c for c in packet.claims if c.type != "opinion"]
+        positives = [c for c in nonopinion if c.polarity != "negative"]
+        negatives = [c for c in nonopinion if c.polarity == "negative"]
+
+        # Contradiction -> competing belief (#7): negative claims against an EXISTING belief build a
+        # separate counter-belief rather than dampening the primary. On cold start there's nothing to
+        # compete with, so negatives just stay in the primary's own (negative) statement.
+        spawn_counter = prior is not None and bool(negatives)
+        if spawn_counter:
+            counter_id = f"{belief_id}__c"
+            counter_deltas.append(
+                _support_delta(counter_id, existing.get(counter_id), negatives, packet,
+                               current_type, settings, counter_to=belief_id)
+            )
+
+        confidence_claims = positives if spawn_counter else nonopinion
         stance_points = [c.text for c in packet.claims if c.type == "opinion"]
         supporting = [c.id for c in confidence_claims if c.polarity != "negative"]
         contradicting = [c.id for c in confidence_claims if c.polarity == "negative"]
@@ -224,6 +248,11 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
 
         if contradicting:
             rationale.append(f"{len(contradicting)} contradicting claim(s) recorded")
+        if spawn_counter:
+            rationale.append(
+                f"{len(negatives)} contradicting claim(s) spawned competing belief "
+                f"{belief_id}__c (primary held, not dampened)"
+            )
         if stance_points:
             rationale.append(f"{len(stance_points)} opinion stance(s) collected")
 
@@ -250,7 +279,60 @@ def run(inp: EvidencePackets, related: RelatedBeliefs, ctx: Context) -> BeliefDe
             )
         )
 
-    return BeliefDeltas(source_id=inp.source_id, deltas=deltas)
+    # Counter-belief deltas come after the primaries; m12 also processes them last so the disputed
+    # primary is persisted before its `disputed_by` back-link is wired.
+    return BeliefDeltas(source_id=inp.source_id, deltas=deltas + counter_deltas)
+
+
+def _support_delta(belief_id, prior, claims, packet, current_type, settings,
+                   counter_to: str) -> BeliefDelta:
+    """A competing (counter) belief built ONLY from contradicting claims, which are its SUPPORT.
+
+    Same confidence math as the primary (authority-weighted mean up to the ceiling) but with no
+    external/diversity/recency corroboration (that evidence backs the primary concept, not the
+    contradiction) and no contradictions of its own. Ratcheted like any belief on update.
+    """
+    type_weight = {"fact": 1.0, "finding": settings.finding_weight, "opinion": 0.0}
+    old_conf = prior.confidence if prior else 0.0
+    authority = _authority(packet, current_type, settings)
+    ceiling = settings.base_confidence_ceiling
+    effective = [c.confidence * type_weight[c.type] for c in claims]
+    mean_conf = sum(effective) / len(effective) if effective else 0.0
+    strength = _clamp(mean_conf * (0.5 + 0.5 * authority) * ceiling)
+
+    if prior is None:
+        new_conf = strength
+        note = f"cold start: competing belief at evidence_strength = {strength:.3f}"
+    else:
+        step = LEARNING_RATE * (strength - old_conf)
+        if step >= 0:
+            new_conf = old_conf + step
+            note = (f"update: {old_conf:.3f} + {LEARNING_RATE}*({strength:.3f} - {old_conf:.3f}) "
+                    f"= {_clamp(new_conf):.3f}")
+        else:
+            new_conf = old_conf  # ratchet: agreeing-but-weaker contradiction holds the counter
+            note = f"ratchet: held at {old_conf:.3f}"
+    new_conf = _clamp(new_conf)
+
+    return BeliefDelta(
+        belief_id=belief_id,
+        statement=prior.statement if prior else _statement_from_claims(claims),
+        linked_concepts=[packet.concept_id],
+        old_conf=round(old_conf, 6),
+        evidence_strength=round(strength, 6),
+        delta=round(new_conf - old_conf, 6),
+        new_conf=round(new_conf, 6),
+        supporting=[c.id for c in claims],
+        contradicting=[],
+        stance_points=[],
+        counter_to=counter_to,
+        rationale=[
+            f"COMPETING belief contradicting {counter_to}",
+            f"{len(claims)} contradicting claim(s), mean effective confidence {mean_conf:.3f}",
+            f"authority {authority:.3f}; evidence_strength = {strength:.3f}",
+            note,
+        ],
+    )
 
 
 def _statement_from_claims(claims) -> str:

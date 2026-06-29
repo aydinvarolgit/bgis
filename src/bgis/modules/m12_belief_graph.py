@@ -55,7 +55,9 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
     updated: list[str] = []
     resolved: list[Belief] = []
 
-    for d in inp.deltas:
+    # Apply primary deltas before counter (competing) deltas so a disputed primary is already
+    # persisted when its `disputed_by` back-link is wired below. (#7)
+    for d in sorted(inp.deltas, key=lambda d: d.counter_to is not None):
         existing = ctx.beliefs.get(d.belief_id)
         entry = BeliefHistoryEntry(
             ts=now,
@@ -76,6 +78,7 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
                 linked_concepts=list(d.linked_concepts),
                 stances=_merge_stances([], d.stance_points),
                 origin="seed" if is_seed else "source",
+                counter_to=d.counter_to,
                 history=[entry],
             )
             created.append(d.belief_id)
@@ -86,12 +89,30 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
                 if cid not in existing.linked_concepts:
                     existing.linked_concepts.append(cid)
             existing.stances = _merge_stances(existing.stances, d.stance_points)
+            if d.counter_to:
+                existing.counter_to = d.counter_to
             existing.history.append(entry)
             belief = existing
             updated.append(d.belief_id)
 
         ctx.beliefs.save(belief)
         resolved.append(belief)
+
+        # Wire the reverse dispute link onto the primary belief this counter opposes. The primary
+        # was persisted in an earlier iteration (sorted above), so we reuse the live resolved object
+        # when present, else load it from the store (a contradiction-only run that didn't otherwise
+        # touch the primary). (#7)
+        if d.counter_to:
+            primary = next((b for b in resolved if b.id == d.counter_to), None) \
+                or ctx.beliefs.get(d.counter_to)
+            if primary is not None:
+                if belief.id not in primary.disputed_by:
+                    primary.disputed_by.append(belief.id)
+                ctx.beliefs.save(primary)
+                if primary not in resolved:
+                    resolved.append(primary)
+                    if primary.id not in created and primary.id not in updated:
+                        updated.append(primary.id)
 
     return BeliefGraphUpdate(
         source_id=inp.source_id,

@@ -11,6 +11,7 @@ chromadb>=0.5
 inflect>=7.0
 feedparser>=6.0
 trafilatura>=1.8
+ddgs>=6.0
 pytest>=8.0
 pytest-mock>=3.12
 ruff>=0.5

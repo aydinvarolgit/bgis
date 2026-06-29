@@ -80,6 +80,52 @@ def test_stances_accumulate_dedup_and_cap(ctx):
     assert b.stances == ["b", "c", "d", "e", "f"]  # "a" evicted by cap, "b" not duplicated
 
 
+def test_counter_belief_wires_disputed_by(ctx):
+    # (#7) A competing belief (counter_to set) gets persisted AND back-links the disputed primary.
+    m12_belief_graph.run(_deltas(0.0, 0.8, statement="X scales well"), ctx)  # primary bel_x1
+    counter = BeliefDeltas(
+        source_id="src_D",
+        deltas=[
+            BeliefDelta(
+                belief_id="bel_x1__c", statement="X does not scale",
+                linked_concepts=["concept_x1"], old_conf=0.0, evidence_strength=0.4,
+                delta=0.4, new_conf=0.4, supporting=["c2"], counter_to="bel_x1",
+                rationale=["competing"],
+            )
+        ],
+    )
+    res = m12_belief_graph.run(counter, ctx)
+    assert "bel_x1__c" in res.created_belief_ids
+    c = ctx.beliefs.get("bel_x1__c")
+    assert c.counter_to == "bel_x1"
+    assert c.confidence == 0.4
+    primary = ctx.beliefs.get("bel_x1")
+    assert primary.disputed_by == ["bel_x1__c"]  # reverse link wired
+    assert primary.confidence == 0.8  # primary NOT dampened by the contradiction
+
+
+def test_primary_and_counter_in_one_update(ctx):
+    # Primary update + its counter in the same BeliefDeltas: counter processed last, primary keeps
+    # its disputed_by even though both are saved in the same run.
+    m12_belief_graph.run(_deltas(0.0, 0.5, statement="X scales well"), ctx)
+    batch = BeliefDeltas(
+        source_id="src_E",
+        deltas=[
+            BeliefDelta(belief_id="bel_x1__c", statement="X does not scale",
+                        linked_concepts=["concept_x1"], old_conf=0.0, evidence_strength=0.4,
+                        delta=0.4, new_conf=0.4, supporting=["c2"], counter_to="bel_x1",
+                        rationale=["competing"]),
+            BeliefDelta(belief_id="bel_x1", statement="ignored", linked_concepts=["concept_x1"],
+                        old_conf=0.5, evidence_strength=0.6, delta=0.05, new_conf=0.55,
+                        supporting=["c1"], rationale=["r"]),
+        ],
+    )
+    m12_belief_graph.run(batch, ctx)
+    primary = ctx.beliefs.get("bel_x1")
+    assert primary.confidence == 0.55  # its own supporting update applied
+    assert primary.disputed_by == ["bel_x1__c"]  # not clobbered by the same-run primary save
+
+
 def test_declining_trend(ctx):
     m12_belief_graph.run(_deltas(0.0, 0.8), ctx)
     down = BeliefDeltas(

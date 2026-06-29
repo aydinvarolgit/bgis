@@ -20,7 +20,8 @@ that decoupling is the core idea.
 - Module 7 Global Belief Retrieval ✅ (+ shared file-backed BeliefStore)
 - Module 8 Context Gap Analysis ✅ (REAL — gemma4 emits concept-tagged Gap{concept_id,question,kind})
 - Module 9 Retrieval Engine ✅ (REAL — GitHub-native sibling repos + opt-in `RetrievalBackend`s:
-  source-plugin-reuse / local-corpus / external-APIs (wiki+S2+crossref); any source type, default off)
+  source-plugin-reuse / local-corpus / external-APIs (wiki+S2+crossref) / web-search (DuckDuckGo);
+  any source type, default off)
 - Module 10 Evidence Packet Builder ✅ (real — routes external evidence to its concept by concept_id)
 - Module 11 Belief Delta Engine ✅ (deterministic, explainable; concept_id->bel_ mapping; bounded external corroboration)
 - Module 12 Global Belief Graph Update ✅ (persists evolving beliefs + temporal history)
@@ -45,6 +46,34 @@ cross-corroborate as they load) — **no m13/m14/m15, no post per ref**.
   block — corroboration substrate only. Live-source beliefs always lead.
 - `pipeline.seed_one(ref,ctx)` = `run()` truncated after `run_belief_update`. Out of scope:
   generative (topic→LLM) seeding, confidence-capping seeds.
+
+## Contradiction handling — competing beliefs ✅ (142 tests)
+Roadmap #7. A source's contradicting (negative-polarity fact/finding) claims against an EXISTING
+belief no longer just dampen it — they spawn a COMPETING belief. Both coexist with independent
+confidences (disagreement represented structurally, not averaged into one number).
+- **models**: `Belief.counter_to: str|None` (set on the competing belief → primary id) +
+  `Belief.disputed_by: list[str]` (primary → its counters); `BeliefDelta.counter_to`. Defaults keep
+  every pre-existing `bel_*.json` valid.
+- **m11**: split non-opinion claims into positives/negatives. `spawn_counter = prior is not None and
+  negatives`. Negatives build counter `bel_<h>__c` via `_support_delta` (negatives are its SUPPORT;
+  authority-weighted mean up to ceiling, NO external/diversity/recency bonus, ratcheted on update);
+  positives update the primary (primary `contradicting` now empty → ratchet holds, never dragged
+  down). Cold start (prior None) keeps negatives in the primary's own negative statement. Counters
+  appended after primaries.
+- **m12**: applies primaries before counters (`sorted(key=counter_to is not None)`) so the
+  `disputed_by` back-link survives a same-run primary save; sets `counter_to` on create/update,
+  appends counter id to the primary's `disputed_by`, ensures primary in `resolved`.
+- **m14**: new OPEN CONTRADICTIONS block (`_debate_lines`) pairs each disputed belief with its
+  competing belief + both confidences; prompt tells the planner to name the tension and take a
+  reasoned side. Counters stay OUT of lead/corroboration (no cmap entry; created).
+
+## Open-web retrieval — DuckDuckGo `WebSearchBackend` ✅ (142 tests)
+Roadmap #3a. `src/bgis/retrieval/web_search.py`: keyless DuckDuckGo open-web search via the `ddgs`
+lib, opt-in `settings.retrieval_use_web_search` (default OFF). Per-concept text search (name + first
+alias), caps `retrieval_websearch_max_concepts`/`_per_concept`. Injectable `search(query,n) ->
+[{title,href,body}]` so tests are offline; fail-soft per query. m09 embeds + threshold-gates each
+result like all backends. Swap in SearXNG by injecting a different `search` (same contract). New dep
+`ddgs>=6.0`. Bing is dead (MS retired the Search APIs ~Aug 2025).
 
 ## Gate I — source-centered narrative ✅ (107 tests)
 Fix for narrative drift: when a source's concepts dedup onto pre-existing higher-confidence beliefs,

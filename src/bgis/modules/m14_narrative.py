@@ -54,7 +54,10 @@ SYSTEM_TEMPLATE = (
     "\n\nUSING THE THREE EVIDENCE KINDS: treat FACTS as grounding (what the projects are/do), "
     "FINDINGS as hard evidence (measured/benchmarked results), and the STANCES/DEBATE block as the "
     "opinions and tensions in the field — use them to TAKE A SIDE and argue a position, not just to "
-    "report. A sharp post grounds a contested stance in facts and findings. "
+    "report. A sharp post grounds a contested stance in facts and findings. When the OPEN "
+    "CONTRADICTIONS block is non-empty, the strongest posts engage that disagreement directly — name "
+    "both sides, weigh their confidences, and commit to a reasoned position rather than papering over "
+    "the tension. "
     "\n\nSet tone to match the author's voice and confidence in [0,1] reflecting how strongly the "
     "evidence supports the main message."
 )
@@ -123,6 +126,25 @@ def _corroboration_lines(update: BeliefGraphUpdate) -> str:
     return "\n".join(lines) if lines else "(no pre-existing beliefs corroborated by this source)"
 
 
+def _debate_lines(update: BeliefGraphUpdate) -> str:
+    """Open disputes (#7): a belief and the competing belief that contradicts it, each with its own
+    confidence. Lets the post argue an honestly contested point instead of reporting a settled one."""
+    by_id = {b.id: b for b in update.beliefs}
+    lines: list[str] = []
+    for b in update.beliefs:
+        for cid in b.disputed_by:
+            counter = by_id.get(cid)
+            counter_txt = (
+                f'"{counter.statement}" (confidence {counter.confidence:.2f})'
+                if counter else "a contradicting source"
+            )
+            lines.append(
+                f'- CONTESTED: "{b.statement}" (confidence {b.confidence:.2f}) is DISPUTED by '
+                f"{counter_txt}"
+            )
+    return "\n".join(lines) if lines else "(no open contradictions among these beliefs)"
+
+
 def _stance_lines(update: BeliefGraphUpdate) -> str:
     # Opinion stances accumulated on the touched beliefs — the field's judgments/predictions/debate.
     lines = []
@@ -154,6 +176,9 @@ def run(
         f"{_corroboration_lines(update)}\n\n"
         "STANCES / DEBATE (opinions accumulated on these beliefs — use to argue a position):\n"
         f"{_stance_lines(update)}\n\n"
+        "OPEN CONTRADICTIONS (beliefs a source has directly disputed — name the tension honestly and "
+        "take a reasoned side, weighing the two confidences):\n"
+        f"{_debate_lines(update)}\n\n"
         "AUTHOR BELIEFS (the author's own stance):\n"
         f"{_user_lines(user)}\n\n"
         "Plan the LinkedIn post."

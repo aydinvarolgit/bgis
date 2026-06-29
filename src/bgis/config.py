@@ -136,16 +136,16 @@ class Settings(BaseSettings):
     retrieval_use_source_plugins: bool = False  # reuse arxiv/hn/github plugins, routed by gap.kind
     retrieval_use_local_corpus: bool = False  # embed-search previously-ingested parsed documents
     retrieval_use_external_apis: bool = False  # Wikipedia + Semantic Scholar + Crossref (keyless)
+    retrieval_use_web_search: bool = False  # open-web DuckDuckGo search (keyless `ddgs` lib)
     # Per-backend fan-out caps (keep runs bounded + within free API rate limits).
     retrieval_plugin_max_gaps: int = 4  # source-plugin backend: gaps queried per run
     retrieval_plugin_per_gap: int = 2  # results kept per queried gap
     retrieval_corpus_max_docs: int = 40  # local-corpus backend: max past docs scanned per run
     retrieval_external_max_concepts: int = 4  # external-API backend: concepts queried per run
     retrieval_external_per_api: int = 2  # results kept per API per concept
+    retrieval_websearch_max_concepts: int = 4  # web-search backend: concepts queried per run
+    retrieval_websearch_per_concept: int = 3  # web results kept per concept
     retrieval_max_per_concept: int = 4  # global: cap external items attached to one concept
-    # DEFERRED (user undecided, 2026-06-28): a general open-web SearchBackend (DuckDuckGo via the
-    # `ddgs` lib, or a self-hosted SearXNG meta-search) would slot in beside these as another
-    # RetrievalBackend. Not built yet — see bgis.retrieval.__doc__ and docs/HANDOFF.md.
     # Module 11: a belief from the source's own claims maxes at this ceiling; the remaining
     # headroom (1 - ceiling) is reserved for independent external corroboration. This keeps the
     # corroboration term from being absorbed by the [0,1] clamp on already-strong beliefs.
