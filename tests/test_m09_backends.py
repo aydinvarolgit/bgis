@@ -5,7 +5,6 @@ integration that confirms a candidate is embedded, routed to a concept, and gate
 """
 
 from bgis.models import (
-    Claim,
     Claims,
     Concept,
     Concepts,
@@ -204,7 +203,12 @@ def test_m09_gates_backend_candidate_below_threshold(ctx):
 
 
 def test_default_backends_respects_flags(ctx):
-    assert default_backends(ctx) == []  # all off by default
+    # The test fixture pins web_search off for offline safety; with all flags off, no backends.
+    assert default_backends(ctx) == []
+    # web_search is ON by default in prod (Settings.retrieval_use_web_search=True); the other three
+    # are opt-in.
+    from bgis.config import Settings
+    assert Settings(github_token="t").retrieval_use_web_search is True
     ctx.settings.retrieval_use_source_plugins = True
     ctx.settings.retrieval_use_local_corpus = True
     ctx.settings.retrieval_use_external_apis = True

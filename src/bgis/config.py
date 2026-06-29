@@ -129,14 +129,14 @@ class Settings(BaseSettings):
     retrieval_match_threshold: float = 0.62
 
     # Module 9 — pluggable retrieval BACKENDS beyond the GitHub-native sibling search. Each is a
-    # `RetrievalBackend` (see bgis.retrieval). All default OFF so the GitHub-native path stays the
-    # only default behavior (and non-repo sources keep skipping m09) until explicitly enabled.
-    # Turning one on lets a single run pull external corroboration for ANY source type (web, arxiv,
-    # hn, rss...), not just GitHub repos. Every backend's HTTP getter is injectable -> tests offline.
+    # `RetrievalBackend` (see bgis.retrieval). web_search (DuckDuckGo) is ON by default so EVERY run
+    # — including non-repo sources (web/arxiv/hn/rss...) — pulls external corroboration; the other
+    # three stay OPT-IN. Every backend's HTTP getter is injectable -> tests offline.
     retrieval_use_source_plugins: bool = False  # reuse arxiv/hn/github plugins, routed by gap.kind
     retrieval_use_local_corpus: bool = False  # embed-search previously-ingested parsed documents
     retrieval_use_external_apis: bool = False  # Wikipedia + Semantic Scholar + Crossref (keyless)
-    retrieval_use_web_search: bool = False  # open-web DuckDuckGo search (keyless `ddgs` lib)
+    retrieval_use_web_search: bool = True  # open-web DuckDuckGo search (keyless `ddgs` lib) — ON by
+    #                                       default: gives ANY source (incl. non-repo) corroboration
     # Per-backend fan-out caps (keep runs bounded + within free API rate limits).
     retrieval_plugin_max_gaps: int = 4  # source-plugin backend: gaps queried per run
     retrieval_plugin_per_gap: int = 2  # results kept per queried gap

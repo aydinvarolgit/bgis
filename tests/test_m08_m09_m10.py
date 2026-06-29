@@ -141,7 +141,7 @@ def test_retrieval_matches_candidate_to_concept(ctx):
     sibling = _FakeRepoResult("acme/orchestrator", "an orchestration engine",
                               ["agent-memory"], 500)
     # candidate text embeds to the orchestration vector
-    ctx.embedder.table[f"acme/orchestrator. an orchestration engine. topics: agent-memory"] = [1.0, 0.0]
+    ctx.embedder.table["acme/orchestrator. an orchestration engine. topics: agent-memory"] = [1.0, 0.0]
     gh = _FakeGh(by_topic={"agent-memory": [sibling]})
     gaps = Gaps(source_id="src_test", gaps=[Gap(concept_id="concept_a", question="rivals?", kind="competitor")])
     r = m09_retrieval.run(gaps, _concepts(), Claims(source_id='src_test'), _repo(), ctx, gh=gh)

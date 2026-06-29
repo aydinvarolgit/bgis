@@ -156,8 +156,9 @@ Ordered by value:
    Pipeline now always calls m09 (repo optional). Live: web article `src_df63a983` went 0 → 8
    external items (1 corpus + 3 wikipedia + 4 crossref), correctly concept-routed.
    **Open-web `SearchBackend`** ✅ **done** — `WebSearchBackend` (`src/bgis/retrieval/web_search.py`):
-   DuckDuckGo via the keyless `ddgs` lib, per-concept text search, opt-in `retrieval_use_web_search`
-   (default OFF). Injectable `search(query,n)->[{title,href,body}]` → offline tests; fail-soft per
+   DuckDuckGo via the keyless `ddgs` lib, per-concept text search, `retrieval_use_web_search`
+   **defaults ON** (every run pulls open-web corroboration; tests pin it OFF in the conftest fixture).
+   Injectable `search(query,n)->[{title,href,body}]` → offline tests; fail-soft per
    query; routed + threshold-gated by m09 like every backend. Inject a SearXNG-backed `search` for
    self-hosted meta-search (same contract). Bing was NOT an option (MS retired the Bing Search APIs
    ~Aug 2025). Still open: dependency-file candidates in the GitHub path.

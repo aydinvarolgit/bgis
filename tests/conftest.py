@@ -86,7 +86,10 @@ class FakeVectorStore:
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
-    return Settings(github_token="test", data_dir=tmp_path / "data")
+    # web_search defaults ON in prod, but unit tests must stay offline — pin it off here. Tests that
+    # exercise the web-search backend pass an injected `search`/backend or flip the flag explicitly.
+    return Settings(github_token="test", data_dir=tmp_path / "data",
+                    retrieval_use_web_search=False)
 
 
 @pytest.fixture

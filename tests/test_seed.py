@@ -11,7 +11,6 @@ from bgis.models import (
     Claim,
     EvidencePacket,
     EvidencePackets,
-    RelatedBeliefs,
 )
 from bgis.modules import m11_delta, m12_belief_graph, m14_narrative
 from bgis import pipeline

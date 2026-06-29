@@ -69,7 +69,9 @@ confidences (disagreement represented structurally, not averaged into one number
 
 ## Open-web retrieval — DuckDuckGo `WebSearchBackend` ✅ (142 tests)
 Roadmap #3a. `src/bgis/retrieval/web_search.py`: keyless DuckDuckGo open-web search via the `ddgs`
-lib, opt-in `settings.retrieval_use_web_search` (default OFF). Per-concept text search (name + first
+lib, `settings.retrieval_use_web_search` **defaults ON** (every run — incl. non-repo web/arxiv/hn/rss
+— pulls open-web corroboration; the other 3 backends stay opt-in). Tests pin it OFF in the conftest
+`settings` fixture to stay offline. Per-concept text search (name + first
 alias), caps `retrieval_websearch_max_concepts`/`_per_concept`. Injectable `search(query,n) ->
 [{title,href,body}]` so tests are offline; fail-soft per query. m09 embeds + threshold-gates each
 result like all backends. Swap in SearXNG by injecting a different `search` (same contract). New dep
