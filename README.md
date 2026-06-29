@@ -27,9 +27,14 @@ cp .env.example .env          # add GITHUB_TOKEN
 ollama pull gemma4:latest && ollama pull nomic-embed-text
 bgis smoke                    # verify deps
 bgis run https://github.com/juliusbrussee/caveman   # or: bgis run "hn:agent memory" | "url:https://blog/post"
+bgis seed seeds.txt           # cold-start: bulk-ingest a manifest of refs (no post); beliefs marked origin="seed"
 bgis graph                    # read the belief graph: consensus, trends, momentum, pillars
 bgis rebuild                  # repersist the graph through current belief math (after a formula change)
 ```
+
+LLM backends + embedding model are set in `llm_config.json` (project root): an ordered
+`backends` list (first = default `gemma4:31b-cloud` cloud, then local `gemma4:latest` failover)
+plus a separate `embedding` block kept on local `nomic-embed-text`.
 
 ## Docs
 - **`docs/HANDOFF.md`** — run it, reset it, known gotchas, next steps. Start here to continue work.
@@ -39,6 +44,6 @@ bgis rebuild                  # repersist the graph through current belief math 
 - Contracts: `src/bgis/models.py`. Plan/vision: `~/.claude/plans/i-want-a-good-swirling-nebula.md`.
 
 ## Stack
-Plain venv + pip · Ollama `gemma4:latest` (LLM) + `nomic-embed-text` (embeddings) ·
+Plain venv + pip · Ollama (LLM, multi-backend failover via `llm_config.json`) + `nomic-embed-text` (embeddings) ·
 ChromaDB (vectors) · JSON files (beliefs/claims/...) · PyGithub · Typer · Pydantic.
 Swappable to Neo4j + Qdrant later behind existing interfaces.

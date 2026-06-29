@@ -22,9 +22,10 @@ class Embedder:
         """Embed a list of texts. Ollama's /api/embed accepts batched input."""
         if not texts:
             return []
+        emb = self.settings.embedding
         resp = requests.post(
-            f"{self.settings.ollama_base_url.rstrip('/')}/api/embed",
-            json={"model": self.settings.embed_model, "input": texts},
+            f"{emb.host.rstrip('/')}/api/embed",
+            json={"model": emb.model, "input": texts},
             timeout=120,
         )
         resp.raise_for_status()

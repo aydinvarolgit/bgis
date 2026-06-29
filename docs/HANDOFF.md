@@ -51,12 +51,20 @@ cd <project>
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pip install -e .
 # .env already has GITHUB_TOKEN (gitignored). Ollama must be running with:
-ollama pull gemma4:latest          # already present
-ollama pull nomic-embed-text       # already present
+ollama pull gemma4:latest          # local failover model
+ollama pull nomic-embed-text       # embeddings
 bgis smoke                         # verify ollama / embed / chroma / github
 ```
 
 Prereqs assumed present: Ollama running, models `gemma4:latest` + `nomic-embed-text`.
+
+**LLM/embedding config** = `llm_config.json` (project root, loaded by `config.py`). The `llm`
+block holds an ordered `backends` list (first = default, rest = **failover**): default is the
+`gemma4:31b-cloud` Ollama-cloud model, then local `gemma4:latest` if the cloud one errors. It also
+carries retry/timeout/backoff and `options{temperature,num_ctx}`. The `embedding` block is SEPARATE
+and stays on local `nomic-embed-text`. The cloud default needs Ollama signed in to cloud; without
+it, runs transparently fall back to the local model. Repoint with `BGIS_LLM_CONFIG`; absent file →
+built-in defaults. `llm.py` owns the per-backend retry + failover loop.
 
 ---
 
@@ -72,6 +80,9 @@ bgis run <ref> --fresh                           # ignore cached claims/concepts
 bgis run-module <name> --source-id <id>          # single module from persisted input
 bgis run-module discovery --url <url>            # discovery needs --url
 bgis rebuild                                     # wipe + replay belief graph through current m11 math (Gate F)
+bgis seed seeds.txt                              # cold-start: bulk-ingest a manifest of refs (m01→m12, NO post);
+                                                 #   created beliefs get permanent origin="seed" (never lead a post,
+                                                 #   corroboration substrate only). Registry: data/seed_sources.json.
 bgis graph                                       # read the belief graph (consensus/trends/momentum/pillars/fringe)
 bgis graph --view consensus --limit 20           # one lens
 bgis graph --belief bel_xxxxxxxx                 # evidence trail (provenance) for one belief

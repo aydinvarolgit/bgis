@@ -9,6 +9,8 @@ This file grows one entry per module. Until a module exists, it is simply absent
 
 from __future__ import annotations
 
+import json
+
 from .context import Context
 from .models import (
     BeliefDeltas,
@@ -183,6 +185,69 @@ def run(ref: str, ctx: Context | None = None) -> GeneratedContent:
     narrative = run_narrative(update, user, packets, ctx)
     content = run_content(narrative, ctx)
     return content
+
+
+# --------------------------------------------------------------------------- #
+# Seeding — cold-start the global belief graph from a manifest of source refs.
+# --------------------------------------------------------------------------- #
+
+
+def seed_sources_path(ctx: Context):
+    return ctx.settings.data_dir / "seed_sources.json"
+
+
+def load_seed_sources(ctx: Context) -> set[str]:
+    """The single predicate for "is this belief a seed": source_ids ingested via `bgis seed`.
+    Read at belief-creation time (m12) AND at rebuild, so the two never diverge. Empty if absent."""
+    path = seed_sources_path(ctx)
+    if not path.exists():
+        return set()
+    return set(json.loads(path.read_text(encoding="utf-8")))
+
+
+def add_seed_source(ctx: Context, source_id: str) -> None:
+    """Idempotently register a source_id as a seed. Called BEFORE that source's m12 runs so the
+    create path stamps origin="seed"; this sidecar survives `rebuild` (only bel_*.json is wiped)."""
+    ids = load_seed_sources(ctx)
+    if source_id in ids:
+        return
+    ids.add(source_id)
+    path = seed_sources_path(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(ids), indent=2), encoding="utf-8")
+
+
+def seed_one(ref: str, ctx: Context) -> BeliefGraphUpdate:
+    """Ingest one ref as a SEED: full pipeline m01->m12 (gap + retrieval ON so seeds
+    cross-corroborate as they load), but NO m13/m14/m15 — seeding builds the graph, never a post.
+    Registers the source_id before m12 so created beliefs are stamped origin="seed"."""
+    ingest = resolve(ref).ingest(ref, ctx)
+    parsed, signals, repo = ingest.parsed, ingest.signals, ingest.repo
+    add_seed_source(ctx, ingest.source.source_id)
+    claims = run_claims(parsed, ctx)
+    concepts = run_concepts(claims, ctx)
+    related = run_belief_retrieval(concepts, ctx)
+    gaps = run_gap(concepts, related, ctx)
+    retrieved = run_retrieval(gaps, concepts, claims, repo, ctx)
+    packets = run_evidence(concepts, claims, signals, related, retrieved, ctx)
+    deltas = run_delta(packets, related, ctx)
+    return run_belief_update(deltas, ctx)
+
+
+def seed(refs: list[str], ctx: Context) -> list[BeliefGraphUpdate]:
+    """Seed the graph from an ordered list of refs (each cross-corroborates the prior ones)."""
+    return [seed_one(ref, ctx) for ref in refs]
+
+
+def parse_manifest(text: str) -> list[str]:
+    """One ref per line; blanks and '#' comment lines skipped; inline trailing whitespace trimmed."""
+    refs = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        refs.append(line)
+    return refs
 
 
 def run_user_beliefs(ctx: Context) -> UserBeliefs:

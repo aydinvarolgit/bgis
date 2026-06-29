@@ -88,6 +88,10 @@ def _source_lines(update: BeliefGraphUpdate, packets: EvidencePackets) -> str:
     )
     lines: list[str] = []
     for b in ranked:
+        # Seed beliefs are background substrate — never the subject/lead of a post. They still
+        # surface in the CORROBORATION block.
+        if b.origin == "seed":
+            continue
         texts = cmap.get(b.id)
         if not texts:
             continue
@@ -105,7 +109,9 @@ def _corroboration_lines(update: BeliefGraphUpdate) -> str:
     created = set(update.created_belief_ids)
     pairs = []
     for b in update.beliefs:
-        if b.id in created:
+        # Pre-existing beliefs this run agreed with; seed beliefs always count as corroboration
+        # (they're excluded from the lead, so this is their only home).
+        if b.id in created and b.origin != "seed":
             continue
         n = len({h.source_id for h in b.history})
         pairs.append((n, b))

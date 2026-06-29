@@ -1,7 +1,9 @@
 """BGIS command-line interface (Typer).
 
   bgis run <github-url>              full pipeline -> LinkedIn post (grows per module)
+  bgis seed <manifest>               cold-start the belief graph from a batch of refs (no post)
   bgis run-module discovery --url U  run a single module from its persisted input
+  bgis rebuild                       wipe + replay belief graph through current belief math
   bgis smoke                         verify Ollama, embeddings, Chroma, GitHub token
 """
 
@@ -272,6 +274,35 @@ def run_module(
         rprint(content.markdown)
     else:
         raise typer.BadParameter(f"unknown/not-yet-implemented module: {name}")
+
+
+@app.command()
+def seed(
+    manifest: str = typer.Argument(..., help="Path to a manifest file: one source ref per line"),
+    fresh: bool = typer.Option(False, "--fresh", help="Ignore cached claims/concepts; re-extract"),
+):
+    """Cold-start the global belief graph from a batch of source refs (no posts generated).
+
+    Each line is a ref (GitHub URL or 'kind:query'); blanks and '#' comments are skipped. Refs are
+    ingested in order through the full pipeline (m01->m12) so they cross-corroborate. Beliefs created
+    here are marked origin="seed": permanent provenance, and m14 never leads a post on them.
+    """
+    from pathlib import Path
+
+    ctx = Context()
+    if fresh:
+        ctx.settings.use_cache = False
+    refs = pipeline.parse_manifest(Path(manifest).read_text(encoding="utf-8"))
+    if not refs:
+        raise typer.BadParameter(f"No refs found in {manifest}")
+    rprint(f"[cyan]Seeding[/cyan] {len(refs)} refs...")
+    for ref in refs:
+        update = pipeline.seed_one(ref, ctx)
+        rprint(
+            f"  {ref}: [green]+{len(update.created_belief_ids)}[/green] created, "
+            f"{len(update.updated_belief_ids)} updated"
+        )
+    rprint(f"[green]Seeded[/green] — graph now {len(ctx.beliefs.all())} beliefs")
 
 
 @app.command()

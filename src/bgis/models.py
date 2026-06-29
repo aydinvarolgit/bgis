@@ -217,6 +217,10 @@ class Belief(BaseModel):
     trend: Trend = "new"
     linked_concepts: list[str] = Field(default_factory=list)
     stances: list[str] = Field(default_factory=list)  # accumulated opinion texts (capped) for m14
+    # Provenance. "seed" = created during a `bgis seed` cold-start run; permanent (never cleared),
+    # and m14 NEVER leads a post on a seed belief (corroboration substrate only). Default "source"
+    # keeps every pre-existing bel_*.json back-compatible.
+    origin: Literal["source", "seed"] = "source"
     history: list[BeliefHistoryEntry] = Field(default_factory=list)
 
 

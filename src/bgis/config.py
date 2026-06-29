@@ -6,13 +6,18 @@ Paths default to a `data/` tree under the project root and are created on demand
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root = three levels up from this file (src/bgis/config.py -> project root).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Optional JSON config for LLM backends + embedding (see llm_config.json at the project root).
+# If absent, the built-in defaults below apply. Env vars (BGIS_LLM_CONFIG) can repoint it.
+LLM_CONFIG_FILE = PROJECT_ROOT / "llm_config.json"
 
 # Stage -> data subdirectory. Each module persists its output artifact here.
 STAGE_DIRS = {
@@ -24,6 +29,66 @@ STAGE_DIRS = {
     "beliefs": "beliefs",
     "posts": "posts",
 }
+
+
+class LLMBackend(BaseModel):
+    """One LLM endpoint. Backends are tried in list order (first = default, rest = failover)."""
+
+    name: str
+    host: str = "http://localhost:11434"
+    model: str
+
+
+class LLMOptions(BaseModel):
+    """Per-request generation options. Merged into every call; per-call kwargs override these."""
+
+    temperature: float = 0.0
+    num_ctx: int = 32768
+
+
+class LLMConfig(BaseModel):
+    """LLM transport config (mirrors the `llm` block of llm_config.json). Backends provide
+    failover; the timeout/retry/backoff fields bound each attempt; `options` set generation params."""
+
+    enabled: bool = True
+    max_retries: int = 5  # transient-error retries per backend before failing over to the next
+    request_timeout_s: float = 120.0
+    request_timeout_max_s: float = 240.0
+    retry_backoff_s: float = 2.0
+    max_transient_retries: int = 8
+    max_backoff_s: float = 60.0
+    retry_jitter: float = 0.3
+    max_prompt_chars: int = 40000
+    options: LLMOptions = Field(default_factory=LLMOptions)
+    backends: list[LLMBackend] = Field(
+        default_factory=lambda: [LLMBackend(name="local", model="gemma4:31b-cloud")]
+    )
+
+
+class EmbeddingConfig(BaseModel):
+    """Embedding endpoint — deliberately SEPARATE from the LLM backends so embeddings always
+    stay on the local nomic model regardless of which LLM backend serves generation."""
+
+    host: str = "http://localhost:11434"
+    model: str = "nomic-embed-text"
+
+
+def _load_llm_file() -> dict:
+    """Read llm_config.json if present (else {}). Path overridable via BGIS_LLM_CONFIG."""
+    import os
+
+    path = Path(os.environ.get("BGIS_LLM_CONFIG", LLM_CONFIG_FILE))
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _default_llm() -> LLMConfig:
+    return LLMConfig.model_validate(_load_llm_file().get("llm", {}))
+
+
+def _default_embedding() -> EmbeddingConfig:
+    return EmbeddingConfig.model_validate(_load_llm_file().get("embedding", {}))
 
 
 class Settings(BaseSettings):
@@ -38,9 +103,13 @@ class Settings(BaseSettings):
     # Secrets / external services. GITHUB_TOKEN has no prefix (read directly).
     github_token: str = Field(default="", alias="GITHUB_TOKEN")
 
+    # LLM generation: multi-backend with failover, loaded from llm_config.json (`llm` block).
+    llm: LLMConfig = Field(default_factory=_default_llm)
+    # Embeddings: kept on a separate local endpoint (`embedding` block) so the embedding model
+    # never changes when the LLM backend does.
+    embedding: EmbeddingConfig = Field(default_factory=_default_embedding)
+    # General Ollama host (used by `bgis smoke`'s /api/tags reachability check).
     ollama_base_url: str = "http://localhost:11434"
-    llm_model: str = "gemma4:latest"
-    embed_model: str = "nomic-embed-text"
 
     data_dir: Path = PROJECT_ROOT / "data"
     # Cosine-similarity thresholds (measured: paraphrases ~0.66-0.81, distinct <=0.46).
@@ -154,11 +223,6 @@ class Settings(BaseSettings):
         d = self.data_dir / "chroma"
         d.mkdir(parents=True, exist_ok=True)
         return d
-
-    @property
-    def ollama_openai_url(self) -> str:
-        """OpenAI-compatible endpoint exposed by Ollama (for instructor/openai client)."""
-        return f"{self.ollama_base_url.rstrip('/')}/v1"
 
 
 def load_settings() -> Settings:

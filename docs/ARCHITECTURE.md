@@ -181,30 +181,42 @@ whole graph without re-ingesting: wipe `data/beliefs/bel_*.json`, then replay ev
 `*_evidence.json` (in mtime = original ingest order) through the current Module 11 + 12. Deterministic,
 no network. Used to repersist confidences computed under an older formula (e.g. pre-ratchet erosion).
 
+**Seeding (`bgis seed <manifest>` → `pipeline.seed_one`).** Cold-start a fresh graph from a curated
+batch of refs before any post-generating run. Each ref runs the full pipeline m01→m12 (gap + retrieval
+ON, so seeds cross-corroborate) but **no m13/m14/m15** — seeding builds the graph, never a post.
+`Belief.origin ∈ {source, seed}` (default `source`, so old `bel_*.json` load unchanged) is stamped at
+m12 **create** time and is **permanent**. The single predicate is the sidecar `data/seed_sources.json`
+(source_ids registered by `bgis seed` *before* each ref's m12); m12 and `rebuild` both read it, so the
+seed tag is re-applied across a wipe+replay automatically (the sidecar isn't wiped). Module 14 excludes
+`origin="seed"` beliefs from the lead/THIS-SOURCE block — seeds are corroboration substrate only.
+
 ---
 
 ## 5. Code layout
 
 ```
 src/bgis/
-  config.py        Settings (env, paths, thresholds, voice, cache flag)
+  config.py        Settings (env, paths, thresholds, voice, cache flag) + LLMConfig/EmbeddingConfig (llm_config.json)
   models.py        ALL Pydantic contracts
   context.py       Context: settings + llm + embedder + vectors + beliefs (passed to every module)
   persistence.py   save/load/exists artifact JSON by stage+source_id
-  llm.py           Ollama OpenAI-compat + instructor (structured()) + text()
-  embeddings.py    Ollama nomic-embed-text
+  llm.py           Ollama OpenAI-compat + instructor; multi-backend failover + retry/backoff (structured()/text())
+  embeddings.py    Ollama nomic-embed-text (settings.embedding — separate endpoint from the LLM backends)
   vectorstore.py   ChromaDB wrapper (cosine collections: concepts, beliefs)
   belief_store.py  BeliefStore: file-backed beliefs + Chroma index (shared by M7, M12)
   pipeline.py      orchestrator: run() (resolves SourcePlugin) + run_<stage>() + load_<stage>()
-  cli.py           Typer: run / run-module / graph / smoke
-  sources/         SourcePlugin interface + registry (github, hn, arxiv, gh_discussions, rss)
+  cli.py           Typer: run / run-module / seed / rebuild / graph / smoke
+  sources/         SourcePlugin interface + registry (github, hn, arxiv, gh_discussions, rss, web)
   modules/m01..m15 one file per module
+
+llm_config.json          LLM backends (failover) + retry/options + separate embedding endpoint
 
 data/                    (gitignored, replayable)
   raw/ parsed/ claims/ signals/ concepts/ posts/
   beliefs/   bel_*.json = belief store; *_<stage>.json = pipeline artifacts (related/gaps/deltas/update/narrative/...)
   chroma/    persistent vector store
   user_beliefs.json      author's Layer-3 beliefs
+  seed_sources.json      source_ids ingested via `bgis seed` (origin="seed" predicate)
 
 tests/   one test_mNN_*.py per module + conftest fakes (FakeLLM/FakeEmbedder/FakeVectorStore)
 ```

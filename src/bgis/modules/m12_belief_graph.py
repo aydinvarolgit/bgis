@@ -47,7 +47,10 @@ def _trend(delta: float, is_new: bool) -> str:
 
 
 def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
+    from ..pipeline import load_seed_sources  # lazy: avoid pipeline<->m12 import cycle
+
     now = datetime.now(timezone.utc)
+    is_seed = inp.source_id in load_seed_sources(ctx)
     created: list[str] = []
     updated: list[str] = []
     resolved: list[Belief] = []
@@ -72,6 +75,7 @@ def run(inp: BeliefDeltas, ctx: Context) -> BeliefGraphUpdate:
                 trend=_trend(d.delta, is_new=True),
                 linked_concepts=list(d.linked_concepts),
                 stances=_merge_stances([], d.stance_points),
+                origin="seed" if is_seed else "source",
                 history=[entry],
             )
             created.append(d.belief_id)

@@ -29,6 +29,23 @@ that decoupling is the core idea.
 - Module 15 Content Generator ✅ (LinkedIn post markdown -> data/posts/<id>.md)
 - **MVP COMPLETE + Part B + Part B-2 + Gates F/G** — full `bgis run <ref>` end-to-end. 107 tests pass.
 
+## Seed — cold-start global beliefs ✅ (125 tests)
+`bgis seed <manifest>` bulk-loads a curated batch of source refs to give a fresh graph a
+worldview BEFORE the first post-generating run. One ref/line (blanks + `#` comments skipped);
+ingested in order through the **full pipeline m01→m12** (gap + retrieval ON so seeds
+cross-corroborate as they load) — **no m13/m14/m15, no post per ref**.
+- **`Belief.origin: Literal["source","seed"]="source"`** (models.py): default keeps every
+  pre-existing `bel_*.json` back-compatible. Stamped only at m12 **create**; **permanent** — real
+  sources later move confidence but `origin` is never cleared (and a seed run touching a pre-existing
+  source belief never flips it to seed).
+- **Single seed predicate** `data/seed_sources.json` (list of seed source_ids): written by `bgis seed`
+  BEFORE each ref's m12 (`pipeline.add_seed_source`/`load_seed_sources`). m12 reads it on create; the
+  sidecar is NOT wiped by `rebuild`, so replay **re-tags seed origin automatically** (no rebuild code).
+- **m14 lead-exclusion**: a belief with `origin=="seed"` is NEVER eligible for the THIS-SOURCE/lead
+  block — corroboration substrate only. Live-source beliefs always lead.
+- `pipeline.seed_one(ref,ctx)` = `run()` truncated after `run_belief_update`. Out of scope:
+  generative (topic→LLM) seeding, confidence-capping seeds.
+
 ## Gate I — source-centered narrative ✅ (107 tests)
 Fix for narrative drift: when a source's concepts dedup onto pre-existing higher-confidence beliefs,
 m14 used to center the post on those (stale) beliefs' statements, not the ingested source. Now m14
@@ -183,5 +200,11 @@ pytest                                       # unit tests (no network; fakes in 
 - LLM only for semantic tasks (claims 4, concepts 6, gaps 8, narrative 14, content 15).
   Everything else deterministic.
 - `.env` is gitignored — never commit `GITHUB_TOKEN`.
-- Stack: Ollama gemma4:latest (LLM) + nomic-embed-text (embeddings), ChromaDB (vectors),
-  JSON files (beliefs/claims/etc). Swap to Neo4j/Qdrant later behind existing interfaces.
+- Stack: Ollama (LLM) + nomic-embed-text (embeddings), ChromaDB (vectors), JSON files
+  (beliefs/claims/etc). Swap to Neo4j/Qdrant later behind existing interfaces.
+- **LLM/embedding config** = `llm_config.json` (project root, loaded by `config.py`). `llm` block:
+  ordered `backends` list (first = default, rest = **failover**; default `gemma4:31b-cloud` cloud,
+  then `gemma4:latest` local) + retry/timeout/backoff + `options{temperature,num_ctx}` +
+  `max_prompt_chars`. `embedding` block is SEPARATE (always local `nomic-embed-text`) so the
+  embedding model never moves when the LLM backend does. `llm.py` owns the per-backend retry +
+  failover loop. Path overridable via `BGIS_LLM_CONFIG`; absent file → built-in defaults.

@@ -1,0 +1,19 @@
+{
+  "llm": {
+    "enabled": true,
+    "max_retries": 5,
+    "request_timeout_s": 120,
+    "request_timeout_max_s": 240,
+    "retry_backoff_s": 2.0,
+    "max_transient_retries": 8,
+    "max_backoff_s": 60.0,
+    "retry_jitter": 0.3,
+    "max_prompt_chars": 40000,
+    "options": { "temperature": 0, "num_ctx": 32768 },
+    "backends": [
+      { "name": "local", "host": "http://localhost:11434", "model": "gemma4:31b-cloud" },
+      { "name": "local-fallback", "host": "http://localhost:11434", "model": "gemma4:latest" }
+    ]
+  },
+  "embedding": { "host": "http://localhost:11434", "model": "nomic-embed-text" }
+}
