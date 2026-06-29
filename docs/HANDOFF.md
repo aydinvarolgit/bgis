@@ -70,6 +70,10 @@ built-in defaults. `llm.py` owns the per-backend retry + failover loop.
 
 ## Run
 
+Holistic reference is in `--help`: `bgis --help` (command overview + examples), and
+`bgis run --help` / `bgis seed --help` print the full REF-scheme table (github / hn / arxiv / ghd /
+rss / url / bare-URL, each with an example). REF grammar is shared by `run` and `seed`.
+
 ```bash
 bgis run https://github.com/owner/repo          # full pipeline → data/posts/<id>.md
 bgis run "hn:agent memory"                       # non-GitHub source: hn:/arxiv:/ghd:/rss:

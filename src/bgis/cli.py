@@ -1,9 +1,14 @@
 """BGIS command-line interface (Typer).
 
-  bgis run <github-url>              full pipeline -> LinkedIn post (grows per module)
-  bgis seed <manifest>               cold-start the belief graph from a batch of refs (no post)
-  bgis run-module discovery --url U  run a single module from its persisted input
-  bgis rebuild                       wipe + replay belief graph through current belief math
+Holistic help lives in --help: `bgis --help` (command overview + examples), `bgis run --help`
+and `bgis seed --help` (full REF-scheme table). REF grammar is shared by run + seed (REF_SCHEMES);
+rich_markup_mode="markdown" so fenced ``` blocks render aligned (epilog reflows, so tables go in help=).
+
+  bgis run <REF> [--fresh]           full pipeline -> LinkedIn post (REF = github URL | kind:query)
+  bgis seed <manifest> [--fresh]     cold-start the belief graph from a batch of REFs (no post)
+  bgis run-module <name> [--url U]   run a single module from its persisted input
+  bgis rebuild [-y]                  wipe + replay belief graph through current belief math
+  bgis graph [--view V] [--belief B] read the belief graph
   bgis smoke                         verify Ollama, embeddings, Chroma, GitHub token
 """
 
@@ -15,17 +20,79 @@ from rich import print as rprint
 from .context import Context
 from . import pipeline
 
-app = typer.Typer(add_completion=False, help="Belief Graph Intelligence System")
+# Shared across `run` and `seed` — both take the SAME ref grammar. Kept here so --help shows it.
+# rich_markup_mode="markdown" (below) renders fenced ``` blocks verbatim, preserving alignment.
+REF_SCHEMES = """\
+**REF schemes** — a REF names ONE source; its scheme selects the ingestion plugin:
+
+```
+https://github.com/owner/repo   GitHub repo (full ingest + sibling retrieval; needs GITHUB_TOKEN)
+hn:<query>                      Hacker News story + comments   (e.g. "hn:agent memory")
+arxiv:<query>                   arXiv paper (title + abstract) (e.g. "arxiv:LLM marketing")
+ghd:owner/repo                  GitHub Discussions / Issues    (e.g. "ghd:langgenius/dify")
+rss:<feed-url>  |  rss:all      RSS feed entries (rss:all = curated settings.rss_feeds)
+url:<article-url>               Web article via trafilatura    (e.g. "url:https://blog/post")
+https://<non-github-url>        Bare web URL also works (web plugin claims non-github URLs)
+```
+
+Quote any REF containing a space or ':' so the shell keeps it intact.
+"""
+
+APP_HELP = """\
+**Belief Graph Intelligence System** — ingest sources into an evolving global belief graph,
+then generate content FROM the graph (never from the source directly).
+
+```
+run      one source REF        -> a LinkedIn post (data/posts/<id>.md)
+seed     a manifest of REFs    -> grow the graph only, NO post (beliefs tagged origin="seed")
+graph    read the belief graph -> consensus / trends / momentum / pillars / fringe
+rebuild  wipe + replay beliefs through current belief math (no re-ingest, no network)
+smoke    check Ollama / embeddings / Chroma / GitHub are reachable
+```
+
+Typical flow: `bgis smoke` -> `bgis seed seeds.txt` -> `bgis run <url>` -> `bgis graph`.
+Run `bgis run --help` (or `bgis seed --help`) for the full REF grammar.
+"""
+
+EXAMPLES = """\
+**Examples**
+
+```
+bgis run https://github.com/langgenius/dify        # GitHub repo -> post
+bgis run "hn:AI marketing automation"              # Hacker News thread -> post
+bgis run "arxiv:LLM recommender systems"           # arXiv paper -> post
+bgis run "ghd:langgenius/dify"                      # GH Discussions/Issues -> post
+bgis run "url:https://www.ibm.com/think/topics/ai-agents-in-marketing"
+bgis run https://github.com/owner/repo --fresh     # bypass claim/concept cache
+bgis seed seeds_ai_marketing.txt                    # batch-build the graph, no posts
+```
+"""
+
+# epilog ignores markdown code fences (reflows), so the schemes/examples live in the command help.
+RUN_HELP = (
+    "Run the full pipeline: one source REF -> a LinkedIn post (`data/posts/<id>.md`).\n\n"
+    "The REF scheme picks the source plugin. The post is planned from the updated belief graph, not "
+    "the source text — the source LEADS, seeded beliefs corroborate.\n\n" + REF_SCHEMES + "\n" + EXAMPLES
+)
+SEED_HELP = (
+    "Cold-start the global belief graph from a manifest of source REFs (NO posts generated).\n\n"
+    "Each non-comment line is a REF using the SAME grammar as `bgis run` (below). Refs ingest in "
+    "order through m01->m12 so they cross-corroborate. Created beliefs are marked `origin=\"seed\"`: "
+    "permanent provenance; m14 never leads a post on them (corroboration substrate only).\n\n"
+    + REF_SCHEMES
+)
+
+app = typer.Typer(add_completion=False, rich_markup_mode="markdown", help=APP_HELP + "\n" + EXAMPLES)
 
 
-@app.command()
+@app.command(help=RUN_HELP)
 def run(
     ref: str = typer.Argument(
-        ..., help="GitHub repo URL or 'kind:query' (e.g. 'hn:agent memory')"
+        ...,
+        help="Source REF: github URL | hn:/arxiv:/ghd:/rss:/url: query | bare web URL. See below.",
     ),
     fresh: bool = typer.Option(False, "--fresh", help="Ignore cached claims/concepts; re-extract"),
 ):
-    """Run the full pipeline: a source reference -> LinkedIn post."""
     ctx = Context()
     if fresh:
         ctx.settings.use_cache = False
@@ -276,17 +343,13 @@ def run_module(
         raise typer.BadParameter(f"unknown/not-yet-implemented module: {name}")
 
 
-@app.command()
+@app.command(help=SEED_HELP)
 def seed(
-    manifest: str = typer.Argument(..., help="Path to a manifest file: one source ref per line"),
+    manifest: str = typer.Argument(
+        ..., help="Path to a manifest file: one source REF per line (blanks and '#' comments skipped)."
+    ),
     fresh: bool = typer.Option(False, "--fresh", help="Ignore cached claims/concepts; re-extract"),
 ):
-    """Cold-start the global belief graph from a batch of source refs (no posts generated).
-
-    Each line is a ref (GitHub URL or 'kind:query'); blanks and '#' comments are skipped. Refs are
-    ingested in order through the full pipeline (m01->m12) so they cross-corroborate. Beliefs created
-    here are marked origin="seed": permanent provenance, and m14 never leads a post on them.
-    """
     from pathlib import Path
 
     ctx = Context()
